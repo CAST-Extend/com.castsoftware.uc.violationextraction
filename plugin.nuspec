@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
+  <metadata>
+    <id>com.castsoftware.uc.violationextraction</id>
+    <version>1.0.1</version>
+    <title>Violation report and Action Plan/Exclusion injection</title>
+    <authors>User Community</authors>
+    <owners>CAST</owners>
+    <projectUrl>https://github.com/CAST-Extend/com.castsoftware.uc.qualitycubereport/wiki</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/CAST-Extend/com.castsoftware.uc.violationextraction/master/export_csv-512.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>This extension allows to export the quality rules from https://technologies.castsoftware.com Rest API into an CSV report</description>
+    <releaseNotes>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki#version-101</releaseNotes>
+    <tags>CASTUserCommunity Quality</tags>
+    <dependencies>
+      <dependency id="CAIP" version="8.3.3" />
+    </dependencies>
+  </metadata>
+	<files>
+	  <file src="**\*.py;**\*.nuspec;README.md;**\*LICENSE;**\*.png;**\*DEMO.bat" exclude="**\*test**\*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/> 
+	</files> 
+	
+	
+</package>

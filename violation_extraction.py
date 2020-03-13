@@ -43,7 +43,7 @@ def close_connection(logger,connection):
 
 ########################################################################
 
-def execute_request(logger, connection, requesttype, request, warname, user, password, apikey, inputjson):
+def execute_request(logger, connection, requesttype, request, warname, user, password, apikey, inputjson, contenttype='application/json'):
     global setcookie
     
     request_headers = {}
@@ -53,7 +53,7 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
     if warname != None:
         request_text +=  warname +"/"
     request_text += "rest/" + request
-    logger.debug('Sending ' + requesttype + ' ' + request_text )   
+    logger.debug('Sending ' + requesttype + ' ' + request_text + ' with contenttype=' + contenttype)   
 
     # if the user and password are provided, we take them first
     if user != None and password != None and user != 'N/A' and user != 'N/A':
@@ -77,10 +77,10 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
     
     # GET request
     if requesttype == 'GET':
-        request_headers.update({'accept' : 'application/json'})
+        request_headers.update({'accept' : contenttype})
     # POST/PUT/DELETE request, we are provining a json file
     else:
-        request_headers.update({'Content-type' : 'application/json'})
+        request_headers.update({'Content-type' : contenttype})
         json_data = json.dumps(inputjson)
     
     # if the session JSESSIONID is already defined we inject the cookie to reuse previous session
@@ -96,7 +96,7 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
     
     # Error 
     if  response.status != 200:
-        msg = 'HTTPS request failed ' + str(response.status) + ' ' + str(response.reason)
+        msg = 'HTTPS request failed ' + str(response.status) + ' ' + str(response.reason) + ':' + request_text
         print (msg)
         logger.error(msg)
         return None
@@ -111,9 +111,13 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
     #send back the date
     encoding = response.info().get_content_charset('iso-8859-1')
     responseread_decoded = response.read().decode(encoding)
-    output_json = json.loads(responseread_decoded)
     
-    return output_json
+    if contenttype=='application/json':
+        output = json.loads(responseread_decoded)
+    else:
+        output = responseread_decoded
+    
+    return output
 
 ########################################################################
 def get_server(logger, connection, warname, user, password, apikey):
@@ -187,8 +191,7 @@ def get_snapshot_violations(logger, connection, warname, user, password, apikey,
 
 ########################################################################
 
-def get_tqi_transactions_violations(logger, connection, warname, user, password, apikey, domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows):
-    logger.info("Extracting the violations for transaction " + transactionid)    
+def get_tqi_transactions_violations(logger, connection, warname, user, password, apikey, domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows):    
     request = domain + "/transactions/" + transactionid + "/snapshots/" + snapshotid + '/violations'
     request += '?startRow=1'
     request += '&nbRows=' + str(nbrows)
@@ -282,7 +285,9 @@ def init_transactions (logger, connection, warname, usr, pwd, apikey,it_domainna
         json_transactions = get_transactions_per_business_criterion(logger, connection, warname, usr, pwd, apikey,it_domainname, applicationid, snapshotid, bcid, nbrows)
         if json_transactions != None:
             transaclist[bcid] = []
+            icount = 0
             for trans in json_transactions:
+                icount += 1
                 tri = None
                 shortname = 'Undefined'
                 name = 'Undefined'
@@ -296,7 +301,6 @@ def init_transactions (logger, connection, warname, usr, pwd, apikey,it_domainna
                     None  
                 try:
                     tri =  trans['transactionRiskIndex']
-                    #print(str(tri))
                 except KeyError:
                     None
                 try:
@@ -325,6 +329,7 @@ def init_transactions (logger, connection, warname, usr, pwd, apikey,it_domainna
                 json_tran_violations = None
                 # look for the transaction violation only for the TQI, for the other HF take the violation already extracted for the TQI  
                 if bcid == "60017":
+                    logger.info("Extracting the violations for transaction " + transactionid + ' (' + str(icount) + '/' + str(len(json_transactions)) + ')')
                     json_tran_violations = get_tqi_transactions_violations(logger, connection, warname, usr, pwd, apikey,it_domainname, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows)                  
                     if json_tran_violations != None:
                         for tran_viol in json_tran_violations:
@@ -433,12 +438,13 @@ def init_parse_argument():
     requiredNamed.add_argument('-technofilter', required=False, dest='technofilter', help='Violation quality rule technology filter (JEE, SQL, HTML5, Cobol...)')
     requiredNamed.add_argument('-componentsfilter', required=False, dest='componentsfilter', help='List of components href filter . DOMAIN08/components/121756,DOMAIN08/components/12875)')
     requiredNamed.add_argument('-violationsfilter', required=False, dest='violationsfilter', help='List of violations to filter (rule pattern 1#components href 1,rule pattern 2#components href 2,...)')
+    requiredNamed.add_argument('-displaysource', required=False, dest='displaysource', help='Display the violations source code (true|false), default = false')
 
     requiredNamed.add_argument('-createexclusions', required=False, dest='createexclusions', help='Create exclusions with the violations selected/filtered (True|False) default = False')
     requiredNamed.add_argument('-createactionplans', required=False, dest='createactionplans', help='Create actions plans with the violations selected/filtered (True|False) default = False')
     requiredNamed.add_argument('-actionplaninputtag', required=False, dest='actionplaninputtag', help='Actions plans tags')
     requiredNamed.add_argument('-comment', required=False, dest='comment', help='Exclusion/Action plan comment')
-    requiredNamed.add_argument('-detailLevel', required=False, dest='detailLevel', help='Report detail level (Simple|Intermediate|Full) default = Intermediate')
+    requiredNamed.add_argument('-detaillevel', required=False, dest='detaillevel', help='Report detail level (Simple|Intermediate|Full) default = Intermediate')
     requiredNamed.add_argument('-csvfile', required=False, dest='csvfile', help='Generate CSV file (true|false) default = false')
     requiredNamed.add_argument('-loglevel', required=False, dest='loglevel', help='Log level (INFO|DEBUG) default = INFO')
     requiredNamed.add_argument('-nbrows', required=False, dest='nbrows', help='max number of rows extracted from the rest API, default = 1000000000')
@@ -501,6 +507,9 @@ if __name__ == '__main__':
     technofilter = args.technofilter
     componentsfilter = args.componentsfilter
     violationsfilter = args.violationsfilter
+    displaysource = False
+    if args.displaysource != None and (args.displaysource == 'True' or args.displaysource == 'true'):
+        displaysource = True
     loglevel = "INFO"
     if args.loglevel != None and (args.loglevel == 'INFO' or args.loglevel == 'DEBUG'):
         loglevel = args.loglevel
@@ -519,9 +528,9 @@ if __name__ == '__main__':
         elif createactionplans: comment = 'Automated action plan'
     elif args.comment  != None:
         comment = args.comment
-    detailLevel = 'Intermediate'
-    if args.detailLevel != None and (args.detailLevel == 'Simple' or args.detailLevel == 'Intermediate' or args.detailLevel == 'Full'):
-        detailLevel = args.detailLevel
+    detaillevel = 'Intermediate'
+    if args.detaillevel != None and (args.detaillevel == 'Simple' or args.detaillevel == 'Intermediate' or args.detaillevel == 'Full'):
+        detaillevel = args.detaillevel
     csvfile = False
     if args.csvfile != None and (args.csvfile == 'True' or args.csvfile == 'true'):
         csvfile = True
@@ -638,15 +647,13 @@ if __name__ == '__main__':
         logger.info('actionplaninputtag='+str(actionplaninputtag))
         logger.info('comment='+str(comment))
         logger.info('technofilter='+str(technofilter))
-        logger.info('detailLevel='+str(detailLevel))
+        logger.info('detaillevel='+str(detaillevel))
         logger.info('nbrows='+str(nbrows))
         logger.info('csvfile='+str(csvfile))
         logger.info('output folder='+str(outputfolder))
         
         
         logger.info('********************************************')    
-    
-        
         connection = open_connection(logger, host, protocol)   
         # few checks on the server 
         json_server = get_server(logger, connection, warname, user, password, apikey)
@@ -698,11 +705,18 @@ if __name__ == '__main__':
                         elif applicationfilter == None or re.match(applicationfilter, appName):
                             logger.info("  Processing application " + appName)
                             csvdatas = [] 
+                            if csvfile != None and csvfile:
+                                # testing if csv file can be written
+                                fpath = ''
+                                if outputfolder != None:
+                                    fpath = outputfolder + '/'
+                                    fpath += appName + "_violations.csv"
+                                    generate_csvfile(logger, ["Empty",], fpath)
+                            # snapshot list
                             json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,it_domainname, applicationid)
                             if json_snapshots != None:
                                 for snap in json_snapshots:
                                     csvdata = []
-                                    
                                     snapHref = ''
                                     snapshotid = -1
                                     try:
@@ -736,11 +750,16 @@ if __name__ == '__main__':
                                     json_snapshot_quality_model = get_snapshot_tqi_quality_model(logger, connection, warname, user, password, apikey,it_domainname, snapshotid)
                                     if json_snapshot_quality_model != None:
                                         for qmitem in json_snapshot_quality_model:
+                                            maxWeight = -1
                                             qrid = qmitem['key']
                                             qrcompoundWeight = qmitem['compoundedWeight'] 
                                             qrcompoundWeightFormula = qmitem['compoundedWeightFormula']
+                                            regexp = "\([0-9]+x([0-9]+)\)"                                            
+                                            for m in re.finditer(regexp, qrcompoundWeightFormula):
+                                                if m.group(1) != None and int(m.group(1)) > int(maxWeight): 
+                                                    maxWeight = int(m.group(1))                                            
                                             qrcrt = qmitem['critical']
-                                            tqiqm[qrid] = {"critical":qrcrt,"tc":{}}
+                                            tqiqm[qrid] = {"critical":qrcrt,"tc":{},"maxWeight":maxWeight,"compoundedWeight":qrcompoundWeight,"compoundedWeightFormula":qrcompoundWeightFormula}
                                             #contains the technical criteria (might be several) for each rule, we keep the fist one
                                             for tccont in qmitem['compoundedWeightTerms']:
                                                 term = tccont['term'] 
@@ -754,7 +773,7 @@ if __name__ == '__main__':
                                     # Components PRI
                                     comppri = None
                                     transactionlist = {}
-                                    if detailLevel == 'Intermediate' or detailLevel == 'Full':
+                                    if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                         try : 
                                             comppri = initialize_components_pri(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid, bcids,nbrows)
                                         except ValueError:
@@ -772,7 +791,18 @@ if __name__ == '__main__':
 
                                     json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
                                     if json_violations != None:
-                                        msg = 'Application name;Count (Filter);Count (Rest API);Total # violations (Rest API);Total # violations;Total # critical violations;QR Id;QR Name;QR Critical;Component type;Component name location;Violation status;Component status;Associated value label;Associated value;Technical criteria;Business Criteria;Quality standards;PRI for select Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability;Number of transactions;Transaction list;Efficiency - Number of transactions;Efficiency - Transactions TRI;Robustness - Number of transactions;Security - Transactions TRI;Security - Number of transactions;Security - Transactions TRI;Critical violations;Cyclomatic complexity;CodeLines;CommentLines;Ratio CommentLines/CodeLines;Action plan status;Action plan tag;Action plan comment;Exclusion request;Exclusion request comment;Bookmarks;URL;QR pattern Href;Component Href;Findings Href;Violation id'
+                                        msg = 'Application name;Count (Filter);Count (Rest API);Total # violations (Rest API);Total # violations;Total # critical violations'
+                                        msg += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula'
+                                        msg += ';Component type;Component name location;Violation status;Component status;Associated value label;Associated value'
+                                        msg += ';Technical criteria;Business Criteria;Quality standards;PRI for select Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
+                                        msg += ';Number of transactions;Transaction list;'
+                                        msg += 'Efficiency - Number of transactions;Efficiency - Max TRI;Efficiency - Transactions TRI'
+                                        msg += ';Robustness - Number of transactions;Robustness - Max TRI;Robustness - Transactions TRI'
+                                        msg += ';Security - Number of transactions;Security - Max TRI;Security - Transactions TRI'
+                                        msg += ';Critical violations;Cyclomatic complexity;CodeLines;CommentLines;Ratio CommentLines/CodeLines'
+                                        msg += ';Action plan status;Action plan tag;Action plan comment'
+                                        msg += ';Exclusion request;Exclusion request comment'
+                                        msg += ';Parameters;Bookmarks;URL;QR pattern Href;Component Href;Findings Href;Violation id;Source code'
                                         #print(msg)
                                         #logger.debug(msg)
                                         if csvfile:
@@ -784,7 +814,7 @@ if __name__ == '__main__':
                                             iCouterRestAPIViolations += 1
                                             currentviolurl = ''
                                             
-                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==len(json_violations) or iCouterRestAPIViolations%1000 == 0:
+                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==len(json_violations) or iCouterRestAPIViolations%500 == 0:
                                                 msg = "processing violation " + str(iCouterRestAPIViolations) + "/" + str(len(json_violations))
                                                 print(msg)
                                                 logger.info(msg)
@@ -918,7 +948,7 @@ if __name__ == '__main__':
                                            
                                             # get more details from the component URI
                                             json_component = None
-                                            if detailLevel == 'Full':
+                                            if detaillevel == 'Full':
                                                 json_component = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
                                             componentType = '<Not extracted>'
                                             criticalViolations = '<Not extracted>'
@@ -935,26 +965,26 @@ if __name__ == '__main__':
                                                     codeLines = json_component['codeLines']
                                                     if codeLines == None :  codeLines = 0
                                                 except KeyError:
-                                                    codeLines = 'Not available'                                           
+                                                    codeLines = 0
                                                 try:
                                                     commentedCodeLines = json_component['commentedCodeLines']
                                                     if commentedCodeLines == None :  commentedCodeLines = 0
                                                 except KeyError:
-                                                    commentedCodeLines = 'Not available'                                          
+                                                    commentedCodeLines = 0                                          
                                                 try:
                                                     commentLines = json_component['commentLines']
                                                     if commentLines == None :  commentLines = 0
                                                 except KeyError:
-                                                    commentLines = 'Not available'  
+                                                    commentLines = 0
                                                       
                                                 try:
                                                     fanIn = json_component['fanIn']
                                                 except KeyError:
-                                                    fanIn = 'Not available'    
+                                                    fanIn = 0
                                                 try:
                                                     fanOut = json_component['fanOut']
                                                 except KeyError:
-                                                    fanOut = 'Not available'     
+                                                    fanOut = 0 
                                                 try:
                                                     cyclomaticComplexity = json_component['cyclomaticComplexity']
                                                 except KeyError:
@@ -970,31 +1000,31 @@ if __name__ == '__main__':
                                                 if codeLines != None and commentLines != None and codeLines != 'Not available' and commentLines != 'Not available' and (codeLines + commentLines != 0) :
                                                     ratioCommentLinesCodeLines = commentLines / (codeLines + commentLines) 
                                                 else:
-                                                    ratioCommentLinesCodeLines = 'Not available'
+                                                    ratioCommentLinesCodeLines = 0
                                                 try:
                                                     halsteadProgramLength = json_component['halsteadProgramLength']
                                                 except KeyError:
-                                                    halsteadProgramLength = 'Not available'    
+                                                    halsteadProgramLength = 0
                                                 try:
                                                     halsteadProgramVocabulary = json_component['halsteadProgramVocabulary']
                                                 except KeyError:
-                                                    halsteadProgramVocabulary = 'Not available'    
+                                                    halsteadProgramVocabulary = 0
                                                 try:
                                                     halsteadVolume = json_component['halsteadVolume']
                                                 except KeyError:
-                                                    halsteadVolume = 'Not available' 
+                                                    halsteadVolume = 0 
                                                 try:
                                                     distinctOperators = json_component['distinctOperators']
                                                 except KeyError:
-                                                    distinctOperators = 'Not available' 
+                                                    distinctOperators = 0 
                                                 try:
                                                     distinctOperands = json_component['distinctOperands']
                                                 except KeyError:
-                                                    distinctOperands = 'Not available'                                             
+                                                    distinctOperands = 0                                             
                                                 try:
                                                     integrationComplexity = json_component['integrationComplexity']
                                                 except KeyError:
-                                                    integrationComplexity = 'Not available'
+                                                    integrationComplexity = 0
                                                 try:
                                                     criticalViolations = json_component['criticalViolations']
                                                 except KeyError:
@@ -1006,7 +1036,7 @@ if __name__ == '__main__':
                                             associatedValueName = None
                                             strqualitystandards = '<Not extracted>'
                                             json_rulepattern = None
-                                            if detailLevel == 'Full':
+                                            if detaillevel == 'Full':
                                                 json_rulepattern = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
                                             if json_rulepattern != None:
                                                 try:
@@ -1028,58 +1058,100 @@ if __name__ == '__main__':
                                             associatedvaluelabel = '<Not extracted>'
                                             associatedvalue = '<Not extracted>'
                                             strbookmarks = '<Not extracted>'
+                                            strparams = '<Not extracted>'
                                             json_findings = None
+                                            srcCode = []
 
-                                            if detailLevel == 'Full':
+                                            if detaillevel == 'Full':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
                                                     json_findings = get_objectviolation_findings(logger, connection, warname, user, password, apikey,componentHref, qrid)
                                                 
-                                            if json_findings != None: 
-                                                fin_name = json_findings['name']
-                                                fin_type = json_findings['type']
-                                                fin_values = json_findings['values']
-                                                fin_bookmarks = json_findings['bookmarks']
-                                                associatedvalue = ''
-                                                associatedvaluelabel = ''
-                                                strbookmarks = ''
+                                                if json_findings != None: 
+                                                    fin_name = json_findings['name']
+                                                    fin_type = json_findings['type']
+                                                    fin_values = json_findings['values']
+                                                    fin_bookmarks = json_findings['bookmarks']
+                                                    fin_parameters = json_findings['parameters']
+                                                    
+                                                    associatedvalue = ''
+                                                    associatedvaluelabel = ''
+                                                    strbookmarks = ''
+                                                    strparams = ''
+                                                    
+                                                    logger.debug("          fin_name=" + str(fin_name))
+                                                    logger.debug("          fin_type=" + str(fin_type))
+                                                    logger.debug("          fin_values=" + str(fin_values))
+                                                    logger.debug("          fin_bookmarks=" + str(fin_bookmarks))
+                                                    logger.debug("          fin_parameters=" + str(fin_parameters))
                                                 
-                                                logger.debug("          fin_name=" + str(fin_name))
-                                                logger.debug("          fin_type=" + str(fin_type))
-                                                logger.debug("          fin_values=" + str(fin_values))
-                                                logger.debug("          fin_bookmarks=" + str(fin_bookmarks))
-                                            
-                                                if fin_type != None and fin_values != None:  
-
-                                                    associatedvaluelabel = fin_name
-                                                    if fin_type == 'integer' or fin_type == 'text': 
-                                                        # possible multiple values 
-                                                        for val in fin_values: 
-                                                            associatedvalue += str(val) + ','
-                                                    elif fin_type == 'object':
-                                                        for val in fin_values: 
-                                                            associatedvalue += str(val['component']['name']) + ','
-                                                    elif fin_type == 'group':
-                                                        for val in fin_values: 
-                                                            for val2 in val:
-                                                                associatedvalue += str(val2['component']['name']) + ','
-                                                    if associatedvalue != '': associatedvalue = associatedvalue[:-1]
-    
-                                                if fin_bookmarks != None:
-                                                    icountbkm = 0
-                                                    for bkm in fin_bookmarks:
-                                                        for bkm2 in bkm:
-                                                            try:
-                                                                icountbkm += 1
-                                                                startLine = bkm2['codeFragment']['startLine']
-                                                                endLine = bkm2['codeFragment']['endLine']
-                                                                strbookmarks += '#' + str(icountbkm) + ':' + str(startLine)+'=>' + str(endLine) + ','
-                                                            except KeyError:
-                                                                None
-                                                    if strbookmarks != '': strbookmarks = strbookmarks[:-1]
-                                            json_findings = None
-                                        
+                                                    if fin_type != None and fin_values != None:  
+                                                        associatedvaluelabel = fin_name
+                                                        if fin_type == 'integer' or fin_type == 'text': 
+                                                            # possible multiple values 
+                                                            for val in fin_values: 
+                                                                associatedvalue += str(val) + ','
+                                                        elif fin_type == 'object':
+                                                            for val in fin_values: 
+                                                                associatedvalue += str(val['component']['name']) + ','
+                                                        elif fin_type == 'group':
+                                                            for val in fin_values: 
+                                                                for val2 in val:
+                                                                    associatedvalue += str(val2['component']['name']) + ','
+                                                        if associatedvalue != '': associatedvalue = associatedvalue[:-1]
+        
+                                                    if fin_bookmarks != None:
+                                                        icountbkm = 0
+                                                        for bkm in fin_bookmarks:
+                                                            for bkm2 in bkm:
+                                                                try:
+                                                                    icountbkm += 1
+                                                                    startLine = bkm2['codeFragment']['startLine']
+                                                                    endLine = bkm2['codeFragment']['endLine']
+                                                                    strbookmarks += '#' + str(icountbkm) + ':' + str(startLine)+'=>' + str(endLine) + ','
+                                                                except KeyError:
+                                                                    None
+                                                        if strbookmarks != '': strbookmarks = strbookmarks[:-1]
+                                                        
+                                                    if fin_parameters != None:
+                                                        for param in fin_parameters:
+                                                            strparams += param['name'] + '='
+                                                            for value in param['values']:
+                                                                strparams += str(value) + '|'
+                                                            strparams = strparams[:-1] 
+                                                            strparams += ';'
+                                                        strparams = strparams[:-1]
+                                                json_findings = None
+                                                
+                                            #if qrname == 'Avoid cyclical calls and inheritances between packages':
+                                            #    continue
+                                            #AED5/local-sites/162402639/file-contents/140 lines 167=>213
+                                            if displaysource and sourceCodesHref != None:
+                                                json_sourcescode = execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)
+                                                if json_sourcescode != None:
+                                                    for src in json_sourcescode:
+                                                        filereference = ''
+                                                        filename = src['file']['name']
+                                                        filehref = src['file']['href']
+                                                        filesize = src['file']['size']
+                                                        srcstartline = src['startLine']
+                                                        srcendline = src['endLine']
+                                                        filereference = filename
+                                                        strstartendlineparams = ''
+                                                        if srcstartline >= 0 and srcendline >= 0:
+                                                            strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
+                                                            filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
+                                                        partialfiletxt = execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
+                                                        if partialfiletxt != None:
+                                                            srcCode.append(filereference + '\n' + partialfiletxt)
+                                                json_sourcescode = None
+                                            # No code, should we look at the tree node, but I don't think there is something to show there
+                                            # for example for java packages, no code to show
+                                            # so we don't do anything for now  
+                                            #elif componentTreeNodeHref != None:
+                                            #    json_treenode = execute_request(logger, connection, 'GET', componentTreeNodeHref, warname, user, password, apikey, None)
+                                                    
                                             #####################################################################################################
                                             # building the reporting
                                             iCounterFilteredViolations += 1
@@ -1087,9 +1159,9 @@ if __name__ == '__main__':
                                             strtotalviol = str(intotalviol)[:-2]
                                             strtotalcritviol = str(intotalcritviol)[:-2]
                                             msg = appName + ";" + str(iCounterFilteredViolations) + ";" + str(iCouterRestAPIViolations)  +  ";" + str(len(json_violations)) + ";" + strtotalviol+ ";" + strtotalcritviol
-                                            msg += ";" + str(qrid)+  ";" + str(qrname) + ";" +  str(qrcritical) + ";" + (componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
+                                            msg += ";" + str(qrid)+  ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
+                                            msg += ";" + str(componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
                                             msg += ";" + str(technicalcriteriaidandnames)
-                                            
                                             #
                                             strlistbc = ''
                                             #mapbctc
@@ -1173,10 +1245,10 @@ if __name__ == '__main__':
                                             numtrans = 0
                                             strtrans = '<Not extracted>'
                                             try:
-                                                tqitrans = transactionlist.get("60017") 
-                                                if tqitrans != None:
+                                                bctrans = transactionlist.get("60017") 
+                                                if bctrans != None:
                                                     strtrans = ''
-                                                    for trans in tqitrans:
+                                                    for trans in bctrans:
                                                         tobeadded = False
                                                         for comp in trans.get("componentsWithViolations"):
                                                             if comp == componentHref:
@@ -1198,12 +1270,13 @@ if __name__ == '__main__':
                                             # Effiency - Number of transactions & transactions list & TRI
                                             msg += ";" 
                                             numtrans = 0
+                                            maxtri = 0
                                             strtrans = '<Not extracted>'
                                             try:
-                                                trans = transactionlist.get("60014") 
-                                                if trans != None:
+                                                bctrans = transactionlist.get("60014") 
+                                                if bctrans != None:
                                                     strtrans = ''
-                                                    for trans in tqitrans:
+                                                    for trans in bctrans:
                                                         tobeadded = False
                                                         for comp in trans.get("componentsWithViolations"):
                                                             if comp == componentHref:
@@ -1212,10 +1285,9 @@ if __name__ == '__main__':
                                                                 break
                                                         if tobeadded:
                                                             transname = trans.get("name")
-                                                            #print(transname)
-                                                            tri = str(trans.get("transactionRiskIndex"))
-                                                            #print(tri)
-                                                            strtrans += transname + ':' + tri + ','
+                                                            tri = trans.get("transactionRiskIndex")
+                                                            if tri != None and tri > maxtri : maxtri = tri
+                                                            strtrans += transname + ':' + str(tri) + ','
                                                             numtrans+=1
                                                         #trans.get("transactionRiskIndex")
                                                     if strtrans != '': strtrans = strtrans[:-1]
@@ -1223,18 +1295,19 @@ if __name__ == '__main__':
                                                 None
                                             if strtrans != "<Not extracted>": 
                                                 msg += str(numtrans)
-                                            msg += ";"
-                                            msg += strtrans 
+                                            msg += ";" + str(maxtri)                                            
+                                            msg += ";" +  strtrans 
                                           
                                             # Robustness - Number of transactions & transactions list & TRI
                                             msg += ";" 
                                             numtrans = 0
+                                            maxtri = 0
                                             strtrans = '<Not extracted>'
                                             try:
-                                                trans = transactionlist.get("60013") 
-                                                if trans != None:
+                                                bctrans = transactionlist.get("60013") 
+                                                if bctrans != None:
                                                     strtrans = ''
-                                                    for trans in tqitrans:
+                                                    for trans in bctrans:
                                                         tobeadded = False
                                                         for comp in trans.get("componentsWithViolations"):
                                                             if comp == componentHref:
@@ -1243,10 +1316,9 @@ if __name__ == '__main__':
                                                                 break
                                                         if tobeadded:
                                                             transname = trans.get("name")
-                                                            #print(transname)
-                                                            tri = str(trans.get("transactionRiskIndex"))
-                                                            #print(tri)
-                                                            strtrans += transname + ':' + tri + ','
+                                                            tri = trans.get("transactionRiskIndex")
+                                                            if tri != None and tri > maxtri : maxtri = tri
+                                                            strtrans += transname + ':' + str(tri) + ','
                                                             numtrans+=1
                                                         #trans.get("transactionRiskIndex")
                                                     if strtrans != '': strtrans = strtrans[:-1]
@@ -1254,19 +1326,20 @@ if __name__ == '__main__':
                                                 None
                                             if strtrans != "<Not extracted>": 
                                                 msg += str(numtrans)
-                                            msg += ";"
-                                            msg += strtrans                                             
+                                            msg += ";" + str(maxtri)                                            
+                                            msg += ";" +  strtrans                                             
                                           
                                             
                                             # Security - Number of transactions & transactions list & TRI
                                             msg += ";" 
                                             numtrans = 0
+                                            maxtri = 0
                                             strtrans = '<Not extracted>'
                                             try:
-                                                trans = transactionlist.get("60016") 
-                                                if trans != None:
+                                                bctrans = transactionlist.get("60016") 
+                                                if bctrans != None:
                                                     strtrans = ''
-                                                    for trans in tqitrans:
+                                                    for trans in bctrans:
                                                         tobeadded = False
                                                         for comp in trans.get("componentsWithViolations"):
                                                             if comp == componentHref:
@@ -1275,10 +1348,9 @@ if __name__ == '__main__':
                                                                 break
                                                         if tobeadded:
                                                             transname = trans.get("name")
-                                                            #print(transname)
-                                                            tri = str(trans.get("transactionRiskIndex"))
-                                                            #print(tri)
-                                                            strtrans += transname + ':' + tri + ','
+                                                            tri = trans.get("transactionRiskIndex")
+                                                            if tri != None and tri > maxtri : maxtri = tri
+                                                            strtrans += transname + ':' + str(tri) + ','
                                                             numtrans+=1
                                                         #trans.get("transactionRiskIndex")
                                                     if strtrans != '': strtrans = strtrans[:-1]
@@ -1286,8 +1358,8 @@ if __name__ == '__main__':
                                                 None
                                             if strtrans != "<Not extracted>": 
                                                 msg += str(numtrans)
-                                            msg += ";"
-                                            msg += strtrans                                            
+                                            msg += ";" + str(maxtri)                                            
+                                            msg += ";" +  strtrans                                           
                                             #########################################################################                                                                                        
                                             msg += ";"
                                             if criticalViolations != None: msg += str(criticalViolations)
@@ -1326,7 +1398,7 @@ if __name__ == '__main__':
 
                                             #########################################################################
                                             msg += ";"+ strbookmarks
-
+                                            msg += ";"+ strparams
                                             #########################################################################
                                             currentviolurl = ''
                                             currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
@@ -1335,17 +1407,34 @@ if __name__ == '__main__':
                                             msg += ";" + currentviolurl
                                             msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
                                             msg += ";"+ str(qrrulepatternhref) + "#" + str(componentHref)        
+                                            # remove unicode characters that are making the reporting fails
+                                            msg = remove_unicode_characters(msg)
+                                                                                        
+                                            #########################################################################
+                                            # Show the progress (without the source code)
+                                            logger.debug(msg)
+                                            #print(msg)
+                                            #print(strprogress + "=>" + currentviolurl + '#' +qrrulepatternhref+ '#'+componentHref)
+
+                                            #########################################################################
+                                            try:
+                                                if len(srcCode) > 0:
+                                                    for src in srcCode:
+                                                        #msg += ';"'+ str(src).replace('"', '""') + '"'
+                                                        # we add only the first 5000 characters
+                                                        msg += ';"'+ str(src).replace('"','""')[0:5000] + '"'
+                                                else:
+                                                    msg += ';N/A'
+                                            except: # catch *all* exceptions
+                                                msg += ';Error'
+                                                tb = traceback.format_exc()
+                                                #e = sys.exc_info()[0]
+                                                logging.error('  Error to get the source code %s' % tb)
 
                                             # remove unicode characters that are making the reporting fails
                                             msg = remove_unicode_characters(msg)                                            
                                             #########################################################################
-                                            # Show the progress
-                                            logger.debug(msg)
-                                            #print(msg)
-                                            #print(strprogress + "=>" + currentviolurl + '#' +qrrulepatternhref+ '#'+componentHref)
-                                          
-                                            #########################################################################
-                                            # append the data for 
+                                            # append the data
                                             if csvfile:
                                                 #for it in msg.split(";"):
                                                 #    csvdata.append(it)

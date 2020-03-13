@@ -9,6 +9,8 @@ import re
 import sys
 import csv
 import traceback
+import os
+import time
 
 '''
  Author : MMR
@@ -468,6 +470,45 @@ def generate_csvfile(logger, data, filepath):
         logger.info(msg) 
 
 ########################################################################
+
+def get_csvfilepath(outputfolder, appName):
+    fpath = ''
+    if outputfolder != None:
+        fpath = outputfolder + '/'
+    fpath += appName + "_violations.csv"
+    return fpath 
+
+########################################################################
+
+def is_locked(filepath):
+    """Checks if a file is locked by opening it in append mode.
+    If no exception thrown, then the file is not locked.
+    """
+    locked = None
+    file_object = None
+    if os.path.exists(filepath):
+        try:
+            #print ("Trying to open %s." % filepath)
+            buffer_size = 8
+            # Opening file in append mode and read the first 8 characters.
+            file_object = open(filepath, 'a', buffer_size)
+            if file_object:
+                #print ("%s is not locked." % filepath)
+                locked = False
+        
+        except IOError:
+            e = sys.exc_info()[0]
+            #print ("File is locked (unable to open in append mode). %s." % e)
+            locked = True
+        finally:
+            if file_object:
+                file_object.close()
+                #print ("%s closed." % filepath)
+    #else:
+    #    print "%s not found." % filepath
+    return locked
+
+########################################################################
 if __name__ == '__main__':
 
     global logger
@@ -707,11 +748,22 @@ if __name__ == '__main__':
                             csvdatas = [] 
                             if csvfile != None and csvfile:
                                 # testing if csv file can be written
-                                fpath = ''
-                                if outputfolder != None:
-                                    fpath = outputfolder + '/'
-                                    fpath += appName + "_violations.csv"
-                                    generate_csvfile(logger, ["Empty",], fpath)
+                                fpath = get_csvfilepath(outputfolder, appName)
+                                filelocked = False
+                                icount = 0
+                                while icount < 10 and is_locked(fpath):
+                                    icount += 1
+                                    filelocked = True
+                                    msg = 'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (fpath, str(icount))
+                                    logger.warn(msg)
+                                    print(msg)
+                                    time.sleep(5)
+                                if is_locked(fpath):
+                                    msg = 'File %s is locked, aborting for application %s' % (fpath,appName)
+                                    logger.error(msg)
+                                    print(msg)
+                                    continue
+                                               
                             # snapshot list
                             json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,it_domainname, applicationid)
                             if json_snapshots != None:
@@ -1127,25 +1179,28 @@ if __name__ == '__main__':
                                             #if qrname == 'Avoid cyclical calls and inheritances between packages':
                                             #    continue
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
-                                            if displaysource and sourceCodesHref != None:
-                                                json_sourcescode = execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)
-                                                if json_sourcescode != None:
-                                                    for src in json_sourcescode:
-                                                        filereference = ''
-                                                        filename = src['file']['name']
-                                                        filehref = src['file']['href']
-                                                        filesize = src['file']['size']
-                                                        srcstartline = src['startLine']
-                                                        srcendline = src['endLine']
-                                                        filereference = filename
-                                                        strstartendlineparams = ''
-                                                        if srcstartline >= 0 and srcendline >= 0:
-                                                            strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
-                                                            filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
-                                                        partialfiletxt = execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
-                                                        if partialfiletxt != None:
-                                                            srcCode.append(filereference + '\n' + partialfiletxt)
-                                                json_sourcescode = None
+                                            if displaysource: 
+                                                if sourceCodesHref != None:
+                                                    json_sourcescode = execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)
+                                                    if json_sourcescode != None:
+                                                        for src in json_sourcescode:
+                                                            filereference = ''
+                                                            filename = src['file']['name']
+                                                            filehref = src['file']['href']
+                                                            filesize = src['file']['size']
+                                                            srcstartline = src['startLine']
+                                                            srcendline = src['endLine']
+                                                            filereference = filename
+                                                            strstartendlineparams = ''
+                                                            if srcstartline >= 0 and srcendline >= 0:
+                                                                strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
+                                                                filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
+                                                            partialfiletxt = execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
+                                                            if partialfiletxt != None:
+                                                                srcCode.append(filereference + '\n' + partialfiletxt)
+                                                    json_sourcescode = None
+                                            else:
+                                                srcCode.append('<Not extracted>')
                                             # No code, should we look at the tree node, but I don't think there is something to show there
                                             # for example for java packages, no code to show
                                             # so we don't do anything for now  
@@ -1508,13 +1563,9 @@ if __name__ == '__main__':
 
                                     # generated csv file if required                                    
                                     if csvfile != None and csvfile:
-                                        fpath = ''
-                                        if outputfolder != None:
-                                            fpath = outputfolder + '/'
-                                        fpath += appName + "_violations.csv"
+                                        fpath = get_csvfilepath(outputfolder, appName)
                                         logger.info("Generating csv file " + fpath)
                                         generate_csvfile(logger, csvdatas, fpath)
-                                    
                                     # keep only last snapshot
                                     break
         close_connection(logger, connection)   

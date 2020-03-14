@@ -435,7 +435,7 @@ def init_parse_argument():
     requiredNamed.add_argument('-criticalrulesonlyfilter', required=False, dest='criticalrulesonlyfilter', help='Violation quality rules filter (True|False)')
     requiredNamed.add_argument('-violationstatusfilter', required=False, dest='violationstatusfilter', help='Violation status filter (added|unchanged)')
     requiredNamed.add_argument('-componentstatusfilter', required=False, dest='componentstatusfilter', help='Component status filter (added|unchanged|updated)')
-    requiredNamed.add_argument('-priminvaluefilter', required=False, dest='priminvaluefilter', help='Violation PRI integer minimum value filter, requires businesscriterionfilter to bet set only with BC value')
+    requiredNamed.add_argument('-priminvaluefilter', required=False, dest='priminvaluefilter', help='Violation PRI integer minimum value filter, requires businesscriterionfilter to bet set only with one BC value')
     requiredNamed.add_argument('-businesscriterionfilter', required=False, dest='businesscriterionfilter', help='Business criterion filter : 60016,60012, ...)')
     requiredNamed.add_argument('-technofilter', required=False, dest='technofilter', help='Violation quality rule technology filter (JEE, SQL, HTML5, Cobol...)')
     requiredNamed.add_argument('-componentsfilter', required=False, dest='componentsfilter', help='List of components href filter . DOMAIN08/components/121756,DOMAIN08/components/12875)')
@@ -846,15 +846,15 @@ if __name__ == '__main__':
                                         msg = 'Application name;Count (Filter);Count (Rest API);Total # violations (Rest API);Total # violations;Total # critical violations'
                                         msg += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula'
                                         msg += ';Component type;Component name location;Violation status;Component status;Associated value label;Associated value'
-                                        msg += ';Technical criteria;Business Criteria;Quality standards;PRI for select Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
+                                        msg += ';Technical criteria;Business Criteria;Quality standards;PRI for selected Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
                                         msg += ';Number of transactions;Transaction list;'
                                         msg += 'Efficiency - Number of transactions;Efficiency - Max TRI;Efficiency - Transactions TRI'
                                         msg += ';Robustness - Number of transactions;Robustness - Max TRI;Robustness - Transactions TRI'
                                         msg += ';Security - Number of transactions;Security - Max TRI;Security - Transactions TRI'
-                                        msg += ';Critical violations;Cyclomatic complexity;CodeLines;CommentLines;Ratio CommentLines/CodeLines'
+                                        msg += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
                                         msg += ';Action plan status;Action plan tag;Action plan comment'
                                         msg += ';Exclusion request;Exclusion request comment'
-                                        msg += ';Parameters;Bookmarks;URL;QR pattern Href;Component Href;Findings Href;Violation id;Source code'
+                                        msg += ';Parameters;Bookmarks;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Source code sniplet'
                                         #print(msg)
                                         #logger.debug(msg)
                                         if csvfile:

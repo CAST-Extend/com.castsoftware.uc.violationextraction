@@ -162,6 +162,21 @@ def get_total_number_violations(logger, connection, warname, user, password, api
 
 ########################################################################
 
+def get_qualityrules_results(logger, connection, warname, user, password, apikey, domain, applicationid, criticalonly, nbrows):
+    logger.info("Extracting the quality rules details")
+    request = domain + "/applications/" + applicationid + "/results?quality-indicators"
+    request += '=(cc:60017'
+    if criticalonly == None or not criticalonly:   
+        request += ',nc:60017'
+    request += ')&select=(evolutionSummary,violationRatio)'
+    # last snapshot only
+    request += '&snapshots=-1'
+    request += '&startRow=1'
+    request += '&nbRows=' + str(nbrows)
+    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+
+########################################################################
+
 def get_snapshot_violations(logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, criticalonly, violationStatus, businesscriterionfilter, technoFilter, nbrows):
     logger.info("Extracting the snapshot violations")
     request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/violations'
@@ -276,6 +291,19 @@ def get_components_pri (logger, connection, warname, user, password, apikey, dom
     request += '&nbRows=' + str(nbrows)
     #print ('aarequest =' + request) 
     return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+     
+########################################################################
+     
+def get_sourcecode(logger, connection, sourceCodesHref, warname, user, password, apikey):
+    return execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)     
+
+########################################################################
+
+def get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey):
+    strstartendlineparams = ''
+    if srcstartline >= 0 and srcendline >= 0:
+        strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
+    return execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
      
 ########################################################################
 # extract the transactions TRI & violations component list per business criteria
@@ -529,7 +557,7 @@ if __name__ == '__main__':
     outputfolder = args.outputfolder 
 
     # Version
-    script_version = "1.0.1"
+    script_version = "1.0.2"
 
     # new params
     applicationfilter = args.applicationfilter
@@ -780,6 +808,8 @@ if __name__ == '__main__':
                                         # the last element is the id
                                         snapshotid = elem
     
+                                    snapshotversion = snap['annotation']['version']
+                                    snapshotdate =  snap['annotation']['date']['isoDate']    
                                     logger.info("    Snapshot " + snapHref + '#' + snapshotid)
     
                                     # Number of violations / snapshots
@@ -841,10 +871,59 @@ if __name__ == '__main__':
                                     iCounterFilteredViolations = 0
                                     iCouterRestAPIViolations = 0
 
+                                    # quality rules details (nb violations, % compliance)
+                                    json_qr_results = get_qualityrules_results(logger, connection, warname, user, password, apikey, it_domainname, applicationid, criticalrulesonlyfilter, nbrows)
+                                    if json_qr_results != None:
+                                        for res in json_qr_results:
+                                            for res2 in res['applicationResults']:
+                                                if res2['type'] == 'quality-rules': 
+                                                    try:
+                                                        grade = res2['result']['grade']
+                                                    except KeyError:
+                                                        grade = None
+                                                    try:
+                                                        key = res2['reference']['key']
+                                                    except KeyError:
+                                                        key = None                                                    
+                                                    try:
+                                                        failedchecks = res2['result']['violationRatio']['failedChecks']
+                                                    except KeyError:
+                                                        failedchecks = None                                                          
+                                                    try:
+                                                        successfulChecks = res2['result']['violationRatio']['successfulChecks']
+                                                    except KeyError:
+                                                        successfulChecks = None                                                             
+                                                    try:
+                                                        totalChecks = res2['result']['violationRatio']['totalChecks']
+                                                    except KeyError:
+                                                        totalChecks = None                                                         
+                                                    try:
+                                                        ratio = res2['result']['violationRatio']['ratio']
+                                                    except KeyError:
+                                                        ratio = None                                                            
+                                                    try:
+                                                        addedViolations = res2['result']['evolutionSummary']['addedViolations']                                              
+                                                    except KeyError:
+                                                        addedViolations = None   
+                                                    try:
+                                                        removedViolations = res2['result']['evolutionSummary']['removedViolations']
+                                                    except KeyError:
+                                                        removedViolations = None                                                          
+                                                    if key != None and tqiqm.get(key) != None:
+                                                        tqiqm.get(key).update({"failedchecks":failedchecks,"successfulChecks":successfulChecks,"totalChecks":totalChecks,"ratio":ratio,"addedViolations":addedViolations,"removedViolations":removedViolations})
+                                                    
+                                            #    res2['']
+                                                # only the last snapshot
+                                            #    break                                                
+                                            # only the last snapshot
+                                            break
+
                                     json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
                                     if json_violations != None:
-                                        msg = 'Application name;Count (Filter);Count (Rest API);Total # violations (Rest API);Total # violations;Total # critical violations'
-                                        msg += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula'
+                                        msg = 'Application name;Date;Version;Count (Filter)'
+                                        #msg += ';Count (Rest API);Total # violations (Rest API)'
+                                        msg += ';Total # critical violations;Total # violations'
+                                        msg += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula;QR failed checks;QR Compliance ratio;QR Added violations;QR Removed violations'
                                         msg += ';Component type;Component name location;Violation status;Component status;Associated value label;Associated value'
                                         msg += ';Technical criteria;Business Criteria;Quality standards;PRI for selected Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
                                         msg += ';Number of transactions;Transaction list;'
@@ -854,7 +933,7 @@ if __name__ == '__main__':
                                         msg += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
                                         msg += ';Action plan status;Action plan tag;Action plan comment'
                                         msg += ';Exclusion request;Exclusion request comment'
-                                        msg += ';Parameters;Bookmarks;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Source code sniplet'
+                                        msg += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmarks;Source code sniplet'
                                         #print(msg)
                                         #logger.debug(msg)
                                         if csvfile:
@@ -1181,7 +1260,7 @@ if __name__ == '__main__':
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
-                                                    json_sourcescode = execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)
+                                                    json_sourcescode = get_sourcecode(logger, connection, sourceCodesHref, warname, user, password, apikey)
                                                     if json_sourcescode != None:
                                                         for src in json_sourcescode:
                                                             filereference = ''
@@ -1193,11 +1272,19 @@ if __name__ == '__main__':
                                                             filereference = filename
                                                             strstartendlineparams = ''
                                                             if srcstartline >= 0 and srcendline >= 0:
-                                                                strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
-                                                            partialfiletxt = execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
+                                                            partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)    
                                                             if partialfiletxt != None:
-                                                                srcCode.append(filereference + '\n' + partialfiletxt)
+                                                                filewithlinesnumber = ''
+                                                                if srcstartline >= 0 :
+                                                                    filelines = partialfiletxt.split("\n")
+                                                                    iline = srcstartline
+                                                                    for line in filelines:
+                                                                        filewithlinesnumber += str(iline) + ' ' +  line + '\n'
+                                                                        iline += 1
+                                                                    srcCode.append(filereference + '\n' + filewithlinesnumber)
+                                                                else: srcCode.append(filereference + '\n' + partialfiletxt)
+                                                            partialfiletxt = None     
                                                     json_sourcescode = None
                                             else:
                                                 srcCode.append('<Not extracted>')
@@ -1213,8 +1300,12 @@ if __name__ == '__main__':
                                             strprogress = str(iCounterFilteredViolations) + "/" + str(len(json_violations)) + "/" + str(intotalviol)
                                             strtotalviol = str(intotalviol)[:-2]
                                             strtotalcritviol = str(intotalcritviol)[:-2]
-                                            msg = appName + ";" + str(iCounterFilteredViolations) + ";" + str(iCouterRestAPIViolations)  +  ";" + str(len(json_violations)) + ";" + strtotalviol+ ";" + strtotalcritviol
-                                            msg += ";" + str(qrid)+  ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
+                                            msg = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
+                                            #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(len(json_violations)) + 
+                                            msg +=  ";" + strtotalcritviol + ";" + strtotalviol 
+                                            msg += ";" + str(qrid)+ ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
+                                            msg += ";" + str(tqiqm[qrid].get('failedchecks')) + ";" + str(tqiqm[qrid].get('ratio')) + ";" + str(tqiqm[qrid].get('addedViolations')) + ";" + str(tqiqm[qrid].get('removedViolations'))
+
                                             msg += ";" + str(componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
                                             msg += ";" + str(technicalcriteriaidandnames)
                                             #
@@ -1452,7 +1543,6 @@ if __name__ == '__main__':
                                                 msg += ";;"                                            
 
                                             #########################################################################
-                                            msg += ";"+ strbookmarks
                                             msg += ";"+ strparams
                                             #########################################################################
                                             currentviolurl = ''
@@ -1461,7 +1551,8 @@ if __name__ == '__main__':
                                             currentviolurl = currentviolfullurl
                                             msg += ";" + currentviolurl
                                             msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
-                                            msg += ";"+ str(qrrulepatternhref) + "#" + str(componentHref)        
+                                            msg += ";"+ str(qrrulepatternhref) + "#" + str(componentHref)
+                                            msg += ";"+ strbookmarks
                                             # remove unicode characters that are making the reporting fails
                                             msg = remove_unicode_characters(msg)
                                                                                         
@@ -1470,7 +1561,6 @@ if __name__ == '__main__':
                                             logger.debug(msg)
                                             #print(msg)
                                             #print(strprogress + "=>" + currentviolurl + '#' +qrrulepatternhref+ '#'+componentHref)
-
                                             #########################################################################
                                             try:
                                                 if len(srcCode) > 0:

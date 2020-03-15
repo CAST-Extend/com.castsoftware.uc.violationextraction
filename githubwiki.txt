@@ -60,17 +60,17 @@ For each application, and only for the last snapshot :
 
 Data extracted :  
 - Application name (Simple/Intermediate/Full)  
+- Snapshot date and version  
 - Index of the violation number filtered (Simple/Intermediate/Full)  
-- Index of the violation number extracted from the Rest API (Simple/Intermediate/Full)  
-- Total number of of the violations extracted from the Rest API (Simple/Intermediate/Full)  
-- Total number of of the violations in the application (Simple/Intermediate/Full)  
 - Total number of of the critical violations in the application (Simple/Intermediate/Full)  
+- Total number of of the violations in the application (Simple/Intermediate/Full)  
 - Quality rule id (Simple/Intermediate/Full)  
 - Quality rule name (Simple/Intermediate/Full)  
 - Quality rule is critical (Simple/Intermediate/Full)  
 - Quality rule maximum weight, contribution weight to technical criteria (Simple/Intermediate/Full) 
 - Quality rule compounded weight, cumulated weight contribution to TQI (Simple/Intermediate/Full) 
 - Quality rule compounded weight formula, contribution to TQI (Simple/Intermediate/Full)  
+- Quality rule failed checks, compliance ratio, number of added violations,number of removed violations    
 - Component type (Full)  
 - Component location aka full name (Simple/Intermediate/Full)  
 - Violation status (Simple/Intermediate/Full)  
@@ -87,15 +87,15 @@ Data extracted :
 - Component number of critical violations, cyclomatic complexity, LOC, number of comments lines, Ratio comment/code lines (Full)  
 - Action plan tag (priority), status & comment, if any for this violation (Simple/Intermediate/Full)  
 - Exclusion request & comment, if any exclusion request has been done for this violation (Simple/Intermediate/Full)  
-- Quality rule parameters name & values, if any (Full)  
-- Bookmarks begin line & end line numbers (Full)  
+- Quality rule parameters name & values, if any (Full)
 - Violation direct URL in the Engineering dashboard (Simple/Intermediate/Full)  
 - Quality rule rest API URI (Simple/Intermediate/Full)  
 - Component rest API URI (Simple/Intermediate/Full)  
 - Violations findings rest API URI (Simple/Intermediate/Full)  
 - Violations findings rest API URI (Simple/Intermediate/Full)  
 - Violation "id", combination of  Quality rule rest API URI + Component rest API URI, to allow identifying a list of violations to be either added in the action plan or in an exclusion request (Simple/Intermediate/Full)  
-- Source code sniplet (Simple/Intermediate/Full), only of the -displaysource parameter is true. First 5000 characters for each code sniplet displayed in the dashboard for this violation  
+- Bookmarks begin line & end line numbers (Full)  
+- Source code sniplet (Simple/Intermediate/Full), only if the -displaysource parameter is true. First 5000 characters for each code sniplet displayed in the dashboard for this violation  
 
 Violations parameter filters available :   
 - Report detail level : -detaillevel Simple/Intermediate/Full (has a high impact on performance)  
@@ -131,12 +131,18 @@ N/A
 
 <a name="knownIssues"></a>
 # Known issues
-- Some quality rules information contain unicode characters which is provokes the script to abort, except for a set unicode character already identified 
+- Some quality rules information or source code snipplet might contain unicode characters that provokes the script to abort, except for a set unicode characters already identified 
 
 <a name="limitations"></a>
+- Only the last snapshot is considered
 - Some data are not available before Engineering dashboard Rest API version 1.x and will be empty in this case
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.0.2
+Add the quality rules failed checks, compliance ratio, # of added violations and # of removed violations
+Add the snapshot date and version
+Add the line numbers in the source code sniplets
+
 ## Version 1.0.1
 * Initial version published

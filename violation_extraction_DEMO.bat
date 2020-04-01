@@ -28,7 +28,7 @@ SET CMD_LOGFILE=-log "%LOGFILE%"
 :: Level of detail : Full|Intermediate|Simple, default is Intermediate (better performance than Full)
 SET DETAILLEVEL=Simple
 SET CMD_DETAILLEVEL=
-SET CMD_DETAILLEVEL=-detailLevel "%DETAILLEVEL%"
+SET CMD_DETAILLEVEL=-detaillevel "%DETAILLEVEL%"
 
 :: Application name regexp filter
 ::SET APPFILTER=Webgoat^|eComm.*
@@ -44,9 +44,9 @@ SET CMD_QRIDFILTER=
 
 
 :: Quality rule name regexp  filter
-SET QRNAMEFILTER=Use varchar2.*
+::SET QRNAMEFILTER=
 SET CMD_QRNAMEFILTER=
-SET CMD_QRIDFILTER=-qridfilter "%QRNAMEFILTER%"
+::SET CMD_QRIDFILTER=-qridfilter "%QRNAMEFILTER%"
 
 
 :: Component location regexp (aka object full name) filter
@@ -59,7 +59,7 @@ SET CMD_COMPONLOCATIONFILTER=
 :: WithActionPlan : in the action plan
 :: WithoutActionPlan : not in the action plan
 :: empty : no filter
-::SET ACTIONPLANFILTER=true
+::SET ACTIONPLANFILTER=WithActionPlan
 SET CMD_ACTIONPLANFILTER=
 ::SET CMD_ACTIONPLANFILTER=-actionplanfilter "%ACTIONPLANFILTER%"
 
@@ -68,7 +68,7 @@ SET CMD_ACTIONPLANFILTER=
 :: Excluded : have an exclusion request
 :: NotExcluded : no exclusion request
 :: empty : no filter
-::SET EXCLUREQUESTFILTER=true
+::SET EXCLUREQUESTFILTER=Excluded
 SET CMD_EXCLUREQUESTFILTER=
 ::SET CMD_EXCLUREQUESTFILTER=-exclusionrequestfilter "%EXCLUREQUESTFILTER%"
 

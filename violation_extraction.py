@@ -557,7 +557,7 @@ if __name__ == '__main__':
     outputfolder = args.outputfolder 
 
     # Version
-    script_version = "1.0.2"
+    script_version = "1.0.3"
 
     # new params
     applicationfilter = args.applicationfilter

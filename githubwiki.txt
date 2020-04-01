@@ -139,9 +139,11 @@ N/A
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.0.3
+Minor fixes in the batch file
 ## Version 1.0.2
 Add the quality rules failed checks, compliance ratio, # of added violations and # of removed violations
-Add the snapshot date and version
+Add the snapshot date and version  
 Add the line numbers in the source code sniplets
 
 ## Version 1.0.1

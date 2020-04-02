@@ -719,8 +719,8 @@ if __name__ == '__main__':
         logger.info('detaillevel='+str(detaillevel))
         logger.info('nbrows='+str(nbrows))
         logger.info('csvfile='+str(csvfile))
+        logger.info('displaysource='+str(displaysource))
         logger.info('output folder='+str(outputfolder))
-        
         
         logger.info('********************************************')    
         connection = open_connection(logger, host, protocol)   
@@ -984,10 +984,10 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 actionPlan = None
                                             # filter the violations already in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and actionPlan != None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and actionPlan == None:
                                                 continue
                                             # filter the violations not in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and actionPlan == None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and actionPlan != None:
                                                 continue
                                                 
                                             try:                                    

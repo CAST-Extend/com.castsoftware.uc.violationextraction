@@ -2,7 +2,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
   <metadata>
     <id>com.castsoftware.uc.violationextraction</id>
-    <version>1.0.4</version>
+    <version>1.0.6</version>
     <title>Violation report and Action Plan/Exclusion injection</title>
     <authors>User Community</authors>
     <owners>CAST</owners>
@@ -17,7 +17,7 @@
     </dependencies>
   </metadata>
 	<files>
-	  <file src="**\*.py;**\*.nuspec;README.md;**\*LICENSE;**\*.png;**\*DEMO.bat" exclude="**\*test**\*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/> 
+	  <file src="**\*.py;**\*.nuspec;README.md;**\*licences**\*;**\*.png;**\*DEMO.bat" exclude="**\*test**\*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/> 
 	</files> 
 	
 	

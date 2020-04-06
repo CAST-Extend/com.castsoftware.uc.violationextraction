@@ -2,4 +2,9 @@
 set version=%1
 set nuggetexe=C:\Program Files\Nuget\nuget.exe
 set EnableNugetPackageRestore=true
-"%nuggetexe%" pack plugin.nuspec -ExcludeEmptyDirectories -version %version% 
+SET CMD="%nuggetexe%"
+ECHO %CMD%
+%CMD%
+SET CMD="%nuggetexe%" pack plugin.nuspec -ExcludeEmptyDirectories -version %version%
+ECHO %CMD%
+%CMD%

@@ -75,7 +75,7 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
         request_headers.update({'X-API-USER:':'admin_apikey'})
         
     # Name of the client added in the header (for the audit trail)
-    request_headers.update({'X-Client':'violation_data_extraction'})
+    request_headers.update({'X-Client':'com.castsoftware.uc.violationextraction'})
     
     # GET request
     if requesttype == 'GET':
@@ -136,7 +136,6 @@ def get_domains(logger, connection, warname, user, password, apikey):
 def get_applications(logger, connection, warname, user, password, apikey, domain):
     request = domain + "/applications"
     return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
 
 ########################################################################
 
@@ -307,12 +306,12 @@ def get_sourcecode_file(logger, connection, warname, filehref, srcstartline, src
      
 ########################################################################
 # extract the transactions TRI & violations component list per business criteria
-def init_transactions (logger, connection, warname, usr, pwd, apikey,it_domainname, applicationid, snapshotid, criticalonly, violationStatus, technoFilter,nbrows):
+def init_transactions (logger, connection, warname, usr, pwd, apikey,domain, applicationid, snapshotid, criticalonly, violationStatus, technoFilter,nbrows):
     #Security,Efficiency,Robustness,TQI
     bcids = ["60017","60016","60014","60013"]
     transaclist = {}
     for bcid in bcids: 
-        json_transactions = get_transactions_per_business_criterion(logger, connection, warname, usr, pwd, apikey,it_domainname, applicationid, snapshotid, bcid, nbrows)
+        json_transactions = get_transactions_per_business_criterion(logger, connection, warname, usr, pwd, apikey,domain, applicationid, snapshotid, bcid, nbrows)
         if json_transactions != None:
             transaclist[bcid] = []
             icount = 0
@@ -360,7 +359,7 @@ def init_transactions (logger, connection, warname, usr, pwd, apikey,it_domainna
                 # look for the transaction violation only for the TQI, for the other HF take the violation already extracted for the TQI  
                 if bcid == "60017":
                     logger.info("Extracting the violations for transaction " + transactionid + ' (' + str(icount) + '/' + str(len(json_transactions)) + ')')
-                    json_tran_violations = get_tqi_transactions_violations(logger, connection, warname, usr, pwd, apikey,it_domainname, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows)                  
+                    json_tran_violations = get_tqi_transactions_violations(logger, connection, warname, usr, pwd, apikey,domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows)                  
                     if json_tran_violations != None:
                         for tran_viol in json_tran_violations:
                             mytransac.get("componentsWithViolations").append(tran_viol['component']['href'])
@@ -413,7 +412,6 @@ def initialize_bc_tch_mapping(logger, connection, warname, user, password, apike
         outputtcids.update({bcid:outputtcid}) 
         json = None
     return outputtcids
-                                    
 
 ########################################################################
 # workaround to remove the unicode characters before sending them to the CSV file
@@ -421,37 +419,50 @@ def initialize_bc_tch_mapping(logger, connection, warname, user, password, apike
 #UnicodeEncodeError: 'charmap' codec can't encode character '\x82' in position 105: character maps to <undefined>    
 
 def remove_unicode_characters(astr):
-    mystr = astr
+    return astr.encode('ascii', 'ignore').decode("utf-8")
+
+    '''
+    # harcoded solution that will be removed later
     mystr = mystr.replace('\ufb01', '')
     mystr = mystr.replace('\ufb02', '')
     mystr = mystr.replace('\u200b','')
+    
+    mystr = mystr.replace('\x80','')
     mystr = mystr.replace('\x82','')
     mystr = mystr.replace('\x83','')
     mystr = mystr.replace('\x84', '')
     mystr = mystr.replace('\x85', '')
+    mystr = mystr.replace('\x86', '')
+    mystr = mystr.replace('\x87', '')
+    mystr = mystr.replace('\x88', '')
+    mystr = mystr.replace('\x89', '')
+    mystr = mystr.replace('\x90', '')
+    mystr = mystr.replace('\x91', '')
     mystr = mystr.replace('\x92', '')
     mystr = mystr.replace('\x93','')
     mystr = mystr.replace('\x94','')
     mystr = mystr.replace('\x95', '')
-    mystr = mystr.replace('\x97','')
     mystr = mystr.replace('\x96','')
+    mystr = mystr.replace('\x97','')
+    mystr = mystr.replace('\x98','')
+    mystr = mystr.replace('\x99','')
     mystr = mystr.replace('\x9c','')
     mystr = mystr.replace('\x9f','')
-    
 
     return mystr
-    
+    '''
 ########################################################################
 
 def init_parse_argument():
     # get arguments
     parser = argparse.ArgumentParser(add_help=False)
     requiredNamed = parser.add_argument_group('Required named arguments')
-    requiredNamed.add_argument('-warparams', required=True, dest='warparams', help='War params using format http://demo-eu.castsoftware.com/Engineering')
+    requiredNamed.add_argument('-restapiurl', required=True, dest='restapiurl', help='Rest API URL using format https://demo-eu.castsoftware.com/CAST-RESTAPI or http://demo-eu.castsoftware.com/Engineering')
+    requiredNamed.add_argument('-edurl', required=False, dest='edurl', help='Engineering dashboard URL using format http://demo-eu.castsoftware.com/Engineering, if empty will be same as restapiurl')    
     requiredNamed.add_argument('-user', required=False, dest='user', help='Username')    
     requiredNamed.add_argument('-password', required=False, dest='password', help='Password')
     requiredNamed.add_argument('-apikey', required=False, dest='apikey', help='Api key')
-    requiredNamed.add_argument('-log', required=True, dest='log', help='log file')
+    requiredNamed.add_argument('-log', required=False, dest='log', help='log file')
     requiredNamed.add_argument('-of', required=False, dest='outputfolder', help='output folder')    
     
     requiredNamed.add_argument('-applicationfilter', required=False, dest='applicationfilter', help='Application name regexp filter')
@@ -474,11 +485,11 @@ def init_parse_argument():
     requiredNamed.add_argument('-createactionplans', required=False, dest='createactionplans', help='Create actions plans with the violations selected/filtered (True|False) default = False')
     requiredNamed.add_argument('-actionplaninputtag', required=False, dest='actionplaninputtag', help='Actions plans tags')
     requiredNamed.add_argument('-comment', required=False, dest='comment', help='Exclusion/Action plan comment')
+    
     requiredNamed.add_argument('-detaillevel', required=False, dest='detaillevel', help='Report detail level (Simple|Intermediate|Full) default = Intermediate')
     requiredNamed.add_argument('-csvfile', required=False, dest='csvfile', help='Generate CSV file (true|false) default = false')
     requiredNamed.add_argument('-loglevel', required=False, dest='loglevel', help='Log level (INFO|DEBUG) default = INFO')
     requiredNamed.add_argument('-nbrows', required=False, dest='nbrows', help='max number of rows extracted from the rest API, default = 1000000000')
-    
     
     return parser
 ########################################################################
@@ -492,6 +503,9 @@ def generate_csvfile(logger, data, filepath):
         '''
         file = open(filepath, 'w')
         for line in data:
+            #linesplited = line.split(';')
+            #msg = 'writing line ' + line#linesplited[0] 
+            #logger.debug(msg)
             file.write(line + '\n') 
         msg = 'File ' + filepath + ' generated with ' + str(len(data)) + ' lines'
         print (msg)
@@ -543,7 +557,11 @@ if __name__ == '__main__':
 
     parser = init_parse_argument()
     args = parser.parse_args()
-    warparams = args.warparams
+    restapiurl = args.restapiurl
+    edurl = restapiurl 
+    if args.edurl != None:
+        edurl = args.edurl
+    
     user = 'N/A'
     if args.user != None: 
         user = args.user 
@@ -553,11 +571,13 @@ if __name__ == '__main__':
     apikey = 'N/A'
     if args.apikey != None: 
         apikey = args.apikey    
-    log = args.log
+    log = 'violation_extraction.log'
+    if args.log != None:
+        log = args.log
     outputfolder = args.outputfolder 
 
     # Version
-    script_version = "1.0.3"
+    script_version = "1.0.6"
 
     # new params
     applicationfilter = args.applicationfilter
@@ -607,6 +627,16 @@ if __name__ == '__main__':
     if args.nbrows != None and type(nbrows) == int: 
         nbrows=args.nbrows
     
+    # Do not change this parameter value, just used to speed up the debugging in some specific cases
+    bload_all_data = True
+    bload_objectviolation_metrics = bload_all_data
+    bload_rule_pattern = bload_all_data
+    bload_objectviolation_findings = bload_all_data
+    bload_qr_results = bload_all_data
+    bload_bc_tch_mapping = bload_all_data 
+    bload_components_pri = bload_all_data
+    bload_serverdetail = bload_all_data
+    bload_quality_model = True
 
     ###########################################################################
     # Forcing the filter values (harcoded), for testing
@@ -663,7 +693,8 @@ if __name__ == '__main__':
         logger.setLevel(logging.INFO)
 
     try:
-        rooturl = 'Undefined'
+        rootapiurl = 'Undefined'
+        rootedurl = 'Undefined'
         protocol = 'Undefined'
         host = 'Undefined'
         warname = 'Undefined'
@@ -674,23 +705,34 @@ if __name__ == '__main__':
         currentviolpartialurl = ''
         currentviolfullurl = ''
         
-        # secure the processing for 1 dashboard
+        # Processing for the REST API URL 
         rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
-        m0 = re.search(rexURL, warparams)
+        m0 = re.search(rexURL, restapiurl)
         if m0:
-            rooturl = m0.group(1)
+            rootapiurl = m0.group(1)
             protocol = m0.group(2)
             host = m0.group(3)
             warname = m0.group(5)
         else:
-            logger.error('Malformed warparams value, skipping : ' + warparams)
+            logger.error('Malformed restapiurl value, abording : ' + restapiurl)
             sys.exit(-1)
+  
+        # Processing for the Engineering dashboard URL 
+        rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
+        m0 = re.search(rexURL, edurl)
+        if m0:
+            rootedurl = m0.group(1)
+        else:
+            logger.error('Malformed rootedurl value, abording : ' + rootedurl)
+            sys.exit(-1)  
     
         # log params
         logger.info('********************************************')
         logger.info('script_version='+script_version)
         logger.info('****************** params ******************')
-        logger.info('rooturl='+rooturl)
+        logger.info('restapiurl='+restapiurl)
+        logger.info('edurl='+edurl)
+        logger.info('rootedurl='+rootedurl)
         logger.info('host='+host)
         logger.info('protocol='+protocol)
         logger.info('warname='+str(warname))
@@ -721,11 +763,28 @@ if __name__ == '__main__':
         logger.info('csvfile='+str(csvfile))
         logger.info('displaysource='+str(displaysource))
         logger.info('output folder='+str(outputfolder))
+        logger.info('bload_all_data='+str(bload_all_data))
+        logger.info('bload_objectviolation_metrics='+str(bload_objectviolation_metrics))
+        logger.info('bload_rule_pattern='+str(bload_rule_pattern))
+        logger.info('bload_objectviolation_findings='+str(bload_objectviolation_findings))
+        logger.info('bload_qr_results='+str(bload_qr_results))
+        logger.info('bload_bc_tch_mapping='+str( bload_bc_tch_mapping))
+        logger.info('bload_components_pri='+str(bload_components_pri))
+        logger.info('bload_serverdetail='+str(bload_serverdetail))
+        logger.info('bload_quality_model='+str(bload_quality_model))
         
         logger.info('********************************************')    
         connection = open_connection(logger, host, protocol)   
-        # few checks on the server 
-        json_server = get_server(logger, connection, warname, user, password, apikey)
+        progressmsg = 'Initialization'
+        print(progressmsg)
+        logger.info(progressmsg)        
+        # few checks on the server
+        json_server = None
+        if not bload_serverdetail:
+            logger.debug("NOT loading the server detail")
+        else: 
+            json_server = get_server(logger, connection, warname, user, password, apikey)
+        
         if json_server != None:
             logger.info('server status=' + json_server['status'])    
             servversion = json_server['version']
@@ -739,17 +798,20 @@ if __name__ == '__main__':
         # retrieve the domains & the applications in those domains 
         json_domains = get_domains(logger, connection, warname, user, password, apikey)
         if json_domains != None:
+            idomain = 0
             for item in json_domains:
-                it_domainname = ''
+                idomain += 1
+                domain = ''
                 try:
-                    it_domainname = item['href']
+                    domain = item['href']
                 except KeyError:
                     pass
                 
-                logger.info("Domain " + it_domainname)
-                # only engineering domains
-                if it_domainname != 'AAD':  #and it_domainname == 'AED_AYYILDIZ':
-                    json_apps = get_applications(logger, connection, warname, user, password, apikey,it_domainname)
+                msg = "Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains))
+                logger.info(msg)
+                print(msg)                 # only engineering domains
+                if domain != 'AAD':  #and domain == 'AED_AYYILDIZ':
+                    json_apps = get_applications(logger, connection, warname, user, password, apikey,domain)
                     applicationid = -1
                     appHref = ''
                     appName = ''
@@ -772,7 +834,9 @@ if __name__ == '__main__':
                             logger.info('Skipping application : ' + appName)
                             continue                
                         elif applicationfilter == None or re.match(applicationfilter, appName):
-                            logger.info("  Processing application " + appName)
+                            msg = "Processing application " + appName
+                            logger.info(msg)
+                            print(msg)
                             csvdatas = [] 
                             if csvfile != None and csvfile:
                                 # testing if csv file can be written
@@ -793,7 +857,7 @@ if __name__ == '__main__':
                                     continue
                                                
                             # snapshot list
-                            json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,it_domainname, applicationid)
+                            json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,domain, applicationid)
                             if json_snapshots != None:
                                 for snap in json_snapshots:
                                     csvdata = []
@@ -811,9 +875,13 @@ if __name__ == '__main__':
                                     snapshotversion = snap['annotation']['version']
                                     snapshotdate =  snap['annotation']['date']['isoDate']    
                                     logger.info("    Snapshot " + snapHref + '#' + snapshotid)
-    
+
+
                                     # Number of violations / snapshots
-                                    json_tot_violations = get_total_number_violations(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid)
+                                    progressmsg = 'Initialization (step 1/5)'
+                                    print(progressmsg)
+                                    logger.info(progressmsg)
+                                    json_tot_violations = get_total_number_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid)
                                     intotalviol = -1
                                     intotalcritviol = -1
                                     if (json_tot_violations != None):
@@ -829,7 +897,14 @@ if __name__ == '__main__':
                                                                         
                                     # retrieve the mapping quality url id => technical criterion id
                                     tqiqm = {}
-                                    json_snapshot_quality_model = get_snapshot_tqi_quality_model(logger, connection, warname, user, password, apikey,it_domainname, snapshotid)
+                                    json_snapshot_quality_model = None
+                                    progressmsg = 'Initialization (step 2/5)'
+                                    print(progressmsg)
+                                    logger.info(progressmsg)                                    
+                                    if not bload_quality_model:
+                                        logger.info("NOT Extracting the snapshot quality model")                                           
+                                    else:
+                                        json_snapshot_quality_model = get_snapshot_tqi_quality_model(logger, connection, warname, user, password, apikey,domain, snapshotid)
                                     if json_snapshot_quality_model != None:
                                         for qmitem in json_snapshot_quality_model:
                                             maxWeight = -1
@@ -846,22 +921,36 @@ if __name__ == '__main__':
                                             for tccont in qmitem['compoundedWeightTerms']:
                                                 term = tccont['term'] 
                                                 #tqiqm[qrid] = {tccont['technicalCriterion']['key']: tccont['technicalCriterion']['name']} 
-                                                #TODO : add qrcompoundWeight and/or qrcompoundWeightFormula
+                                                #TODO: add qrcompoundWeight and/or qrcompoundWeightFormula
                                                 tqiqm.get(qrid).get("tc").update({tccont['technicalCriterion']['key']: tccont['technicalCriterion']['name']})
                                                 
                                         json_snapshot_quality_model = None
                                         
-                                    mapbctc = initialize_bc_tch_mapping(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid, bcids)
+                                    progressmsg = 'Initialization (step 3/5)'
+                                    print(progressmsg)
+                                    logger.info(progressmsg) 
+                                    mapbctc = None                                     
+                                    if not bload_bc_tch_mapping:
+                                        logger.info("NOT Extracting the snapshot business criteria => technical criteria mapping")                                          
+                                    else:    
+                                        mapbctc = initialize_bc_tch_mapping(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid, bcids)
+                                    
                                     # Components PRI
+                                    progressmsg = 'Initialization (step 4/5)'
+                                    print(progressmsg)
+                                    logger.info(progressmsg) 
                                     comppri = None
                                     transactionlist = {}
-                                    if detaillevel == 'Intermediate' or detaillevel == 'Full':
-                                        try : 
-                                            comppri = initialize_components_pri(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid, bcids,nbrows)
-                                        except ValueError:
-                                            None
-                                        transactionlist = init_transactions(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid,criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
-                                                 
+                                    
+                                    if not bload_components_pri:
+                                        logger.info("NOT extracting the components PRI for the business criteria")
+                                    else: 
+                                        if detaillevel == 'Intermediate' or detaillevel == 'Full':
+                                            try : 
+                                                comppri = initialize_components_pri(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid, bcids,nbrows)
+                                            except ValueError:
+                                                None
+                                            transactionlist = init_transactions(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid,criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
                                     
                                     ###################################################################
                                     # table containing the scheduled exclusions to create
@@ -871,8 +960,15 @@ if __name__ == '__main__':
                                     iCounterFilteredViolations = 0
                                     iCouterRestAPIViolations = 0
 
+                                    progressmsg = 'Initialization (step 5/5)'
+                                    print(progressmsg)
+                                    logger.info(progressmsg)                                      
                                     # quality rules details (nb violations, % compliance)
-                                    json_qr_results = get_qualityrules_results(logger, connection, warname, user, password, apikey, it_domainname, applicationid, criticalrulesonlyfilter, nbrows)
+                                    json_qr_results = None
+                                    if not bload_qr_results:
+                                        logger.info("NOT Extracting the quality rules details")                                          
+                                    else:    
+                                        json_qr_results = get_qualityrules_results(logger, connection, warname, user, password, apikey, domain, applicationid, criticalrulesonlyfilter, nbrows)
                                     if json_qr_results != None:
                                         for res in json_qr_results:
                                             for res2 in res['applicationResults']:
@@ -918,7 +1014,13 @@ if __name__ == '__main__':
                                             # only the last snapshot
                                             break
 
-                                    json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,it_domainname, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
+                                    progressmsg = 'Extracting violations'
+                                    print(progressmsg)
+                                    logger.info(progressmsg)
+                                    progressmsg = 'Loading violations & components data from the REST API'
+                                    print(progressmsg)
+                                    logger.info(progressmsg)                                    
+                                    json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
                                     if json_violations != None:
                                         msg = 'Application name;Date;Version;Count (Filter)'
                                         #msg += ';Count (Rest API);Total # violations (Rest API)'
@@ -940,28 +1042,36 @@ if __name__ == '__main__':
                                             #for it in msg.split(";"):
                                             #    csvdata.append(it)
                                             csvdatas.append(msg)
-                                        
+
+                                        lastProgressReported = None
                                         for violation in json_violations:
                                             iCouterRestAPIViolations += 1
                                             currentviolurl = ''
-                                            
-                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==len(json_violations) or iCouterRestAPIViolations%500 == 0:
-                                                msg = "processing violation " + str(iCouterRestAPIViolations) + "/" + str(len(json_violations))
+                                            violations_size = len(json_violations)
+                                            imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
+                                            '''
+                                            if imetricprogress in (9,19,29,39,49,59,69,79,89,99) : 
+                                                if lastProgressReported == None or lastProgressReported != imetricprogress:
+                                                    progressmsg = ' ' + str(imetricprogress+1) + '% of the violations processed (' + str(iCouterRestAPIViolations) + "/" + str(violations_size) + ')'
+                                                    logger.info(progressmsg)
+                                                    print(progressmsg)
+                                                    lastProgressReported = imetricprogress                                            
+                                            '''
+                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
+                                                msg = "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)'
                                                 print(msg)
                                                 logger.info(msg)
                                             try:
                                                 qrname = violation['rulePattern']['name']
                                             except KeyError:
                                                 qrname = None    
+                                            qrcritical = '<Not extracted>'
                                             try:
-                                                qrcritical = violation['rulePattern']['critical']
+                                                qrcritical = str(violation['rulePattern']['critical'])
                                             except KeyError:
-                                                # in earlier versions of the rest API this information was not available, taking the value from another location
-                                                qrcritical = None
-                                                if criticalrulesonlyfilter != None and criticalrulesonlyfilter == True:
-                                                    qrcritical = True 
-                                                else:
-                                                    qrcritical = tqiqm[qrid].get("critical")                                                    
+                                                # in earlier versions of the rest API this information was not available, taking the value from another location when possible
+                                                if tqiqm != None and tqiqm[qrid] != None and tqiqm[qrid].get("critical") != None:
+                                                    qrcritical = str(tqiqm[qrid].get("critical"))                                                    
                                             try:                                    
                                                 qrrulepatternhref = violation['rulePattern']['href']
                                             except KeyError:
@@ -1076,11 +1186,15 @@ if __name__ == '__main__':
                                             technicalcriteriaidandnames = technicalcriteriaidandnames[:-1]
                                             
                                             ######################################################################################################################################                                           
-                                           
                                             # get more details from the component URI
                                             json_component = None
-                                            if detaillevel == 'Full':
-                                                json_component = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
+                                            if not bload_objectviolation_metrics:
+                                                logger.debug("NOT Extracting the component metrics") 
+                                            else:
+                                                if detaillevel == 'Full':
+                                                    #TODO:add a cache to avoid reloading several time the same object
+                                                    json_component = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
+                                            
                                             componentType = '<Not extracted>'
                                             criticalViolations = '<Not extracted>'
                                             cyclomaticComplexity = '<Not extracted>'
@@ -1167,8 +1281,12 @@ if __name__ == '__main__':
                                             associatedValueName = None
                                             strqualitystandards = '<Not extracted>'
                                             json_rulepattern = None
-                                            if detaillevel == 'Full':
-                                                json_rulepattern = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
+                                            if not bload_rule_pattern:
+                                                logger.debug("NOT Extracting the rule pattern details")                                                
+                                            else:
+                                                if detaillevel == 'Full':
+                                                    #TODO:add a cache to avoid reloading several time the same rule
+                                                    json_rulepattern = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
                                             if json_rulepattern != None:
                                                 try:
                                                     associatedValueName = json_rulepattern['associatedValueName']
@@ -1193,7 +1311,9 @@ if __name__ == '__main__':
                                             json_findings = None
                                             srcCode = []
 
-                                            if detaillevel == 'Full':
+                                            if not bload_objectviolation_findings:
+                                                logger.info("NOT Extracting the component findings")
+                                            elif detaillevel == 'Full':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
@@ -1255,8 +1375,9 @@ if __name__ == '__main__':
                                                         strparams = strparams[:-1]
                                                 json_findings = None
                                                 
-                                            #if qrname == 'Avoid cyclical calls and inheritances between packages':
-                                            #    continue
+                                            # Do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
+                                            if qrid == 7294:
+                                                continue
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
@@ -1273,9 +1394,11 @@ if __name__ == '__main__':
                                                             strstartendlineparams = ''
                                                             if srcstartline >= 0 and srcendline >= 0:
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
-                                                            partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)    
+
+                                                            partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)
                                                             if partialfiletxt != None:
                                                                 filewithlinesnumber = ''
+                                                            if qrid != 7294:
                                                                 if srcstartline >= 0 :
                                                                     filelines = partialfiletxt.split("\n")
                                                                     iline = srcstartline
@@ -1284,6 +1407,10 @@ if __name__ == '__main__':
                                                                         iline += 1
                                                                     srcCode.append(filereference + '\n' + filewithlinesnumber)
                                                                 else: srcCode.append(filereference + '\n' + partialfiletxt)
+                                                            elif qrid == 7294:
+                                                                # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
+                                                                # only the file name is enough, cause it's not providing much value 
+                                                                srcCode.append(filereference)
                                                             partialfiletxt = None     
                                                     json_sourcescode = None
                                             else:
@@ -1297,11 +1424,11 @@ if __name__ == '__main__':
                                             #####################################################################################################
                                             # building the reporting
                                             iCounterFilteredViolations += 1
-                                            strprogress = str(iCounterFilteredViolations) + "/" + str(len(json_violations)) + "/" + str(intotalviol)
+                                            strprogress = str(iCounterFilteredViolations) + "/" + str(violations_size) + "/" + str(intotalviol)
                                             strtotalviol = str(intotalviol)[:-2]
                                             strtotalcritviol = str(intotalcritviol)[:-2]
                                             msg = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
-                                            #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(len(json_violations)) + 
+                                            #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
                                             msg +=  ";" + strtotalcritviol + ";" + strtotalviol 
                                             msg += ";" + str(qrid)+ ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
                                             msg += ";" + str(tqiqm[qrid].get('failedchecks')) + ";" + str(tqiqm[qrid].get('ratio')) + ";" + str(tqiqm[qrid].get('addedViolations')) + ";" + str(tqiqm[qrid].get('removedViolations'))
@@ -1311,23 +1438,24 @@ if __name__ == '__main__':
                                             #
                                             strlistbc = ''
                                             #mapbctc
-                                            for bcid in bcids:
-                                                listtc = mapbctc.get(bcid)
-                                                for tc in listtc:
-                                                    qrlisttc = tqiqm[qrid].get('tc').keys()
-                                                    for tcid in qrlisttc:
-                                                        if tc == tcid:
-                                                            # found 
-                                                            if bcid == "60016": 
-                                                                strlistbc = strlistbc + '60016#Security,'
-                                                            if bcid == "60014": 
-                                                                strlistbc = strlistbc + '60014#Efficiency,'
-                                                            if bcid == "60013": 
-                                                                strlistbc = strlistbc + '60013#Robustness,'
-                                                            if bcid == "60011": 
-                                                                strlistbc = strlistbc + '60011#Transferability,'
-                                                            if bcid == "60012": 
-                                                                strlistbc = strlistbc + '60012#Changeability,'
+                                            if mapbctc != None and tqiqm != None:
+                                                for bcid in bcids:
+                                                    listtc = mapbctc.get(bcid)
+                                                    for tc in listtc:
+                                                        qrlisttc = tqiqm[qrid].get('tc').keys()
+                                                        for tcid in qrlisttc:
+                                                            if tc == tcid:
+                                                                # found 
+                                                                if bcid == "60016": 
+                                                                    strlistbc = strlistbc + '60016#Security,'
+                                                                if bcid == "60014": 
+                                                                    strlistbc = strlistbc + '60014#Efficiency,'
+                                                                if bcid == "60013": 
+                                                                    strlistbc = strlistbc + '60013#Robustness,'
+                                                                if bcid == "60011": 
+                                                                    strlistbc = strlistbc + '60011#Transferability,'
+                                                                if bcid == "60012": 
+                                                                    strlistbc = strlistbc + '60012#Changeability,'
                                             if strlistbc != '': strlistbc = strlistbc[:-1]
                                             msg += ";" + strlistbc
                                             msg += ";" + strqualitystandards
@@ -1547,7 +1675,7 @@ if __name__ == '__main__':
                                             #########################################################################
                                             currentviolurl = ''
                                             currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
-                                            currentviolfullurl= rooturl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
+                                            currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
                                             currentviolurl = currentviolfullurl
                                             msg += ";" + currentviolurl
                                             msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
@@ -1622,7 +1750,7 @@ if __name__ == '__main__':
                                     #########################################################################
 
                                     
-                                    strAppHref = it_domainname + '/applications/' + str(applicationid)
+                                    strAppHref = domain + '/applications/' + str(applicationid)
                                     if createexclusions and json_new_scheduledexclusions != None and len(json_new_scheduledexclusions) > 0:
                                         logger.info("Creating "  + str(len(json_new_scheduledexclusions)) + " new exclusions : " + str(json_new_scheduledexclusions))
                                         create_scheduledexclusions(logger, connection, warname, user, password, apikey,strAppHref, json_new_scheduledexclusions)

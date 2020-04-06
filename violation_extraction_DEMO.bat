@@ -4,9 +4,15 @@ SET AIP_DEFAULT_BIN_DIR=C:\Program Files\CAST\8.3
 IF "%PYTHONPATH%"=="" SET PYTHONPATH=%AIP_DEFAULT_BIN_DIR%\ThirdParty\Python34
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-:: WAR params : http|https://host(:port)(/EngineeringWarName)
-SET WARPARAMS=https://demo-eu.castsoftware.com/Engineering
-SET CMD_WARPARAMS=-warparams "%WARPARAMS%"
+:: Rest API URL  : http|https://host(:port)(/EngineeringWarName) or http|https://host(:port)(/CAST-RESTAPIWarName) 
+SET RESTAPIURL=https://demo-eu.castsoftware.com/Engineering
+SET CMD_RESTAPIURL=-restapiurl "%RESTAPIURL%"
+
+::When the Engineering dashboard URL and Rest API are different, fill the below parameter 
+:: Engineering dahsboard URL  : http|https://host(:port)(/EngineeringWarName) 
+::SET EDURL=https://demo-eu.castsoftware.com/Engineering
+SET CMD_EDURL=
+::SET CMD_EDURL=-edurl "%RESTAPIURL%"
 
 ::SET USER=N/A
 SET USER=CIO
@@ -26,7 +32,7 @@ SET CMD_LOGFILE=-log "%LOGFILE%"
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Level of detail : Full|Intermediate|Simple, default is Intermediate (better performance than Full)
-SET DETAILLEVEL=Simple
+SET DETAILLEVEL=Intermediate
 SET CMD_DETAILLEVEL=
 SET CMD_DETAILLEVEL=-detaillevel "%DETAILLEVEL%"
 
@@ -153,7 +159,7 @@ SET CMD_CSVFILE=-csvfile "%CSVFILE%"
 :: Max nbRows for the Rest API calls
 ::SET NBROWS=100000000
 SET CMD_NBROWS=
-::SET CMD_NBROWS=-nbrows "%CMD_NBROWS%"
+::SET CMD_NBROWS=-nbrows "%NBROWS%"
 
 :: Display the source code in violation in the csv file : true|false, default = false
 ::SET DISPLAYSOURCE=true
@@ -162,7 +168,7 @@ SET CMD_DISPLAYSOURCE=
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 ECHO Running the command line 
-SET CMD="%PYTHONPATH%\python" "%~dp0violation_extraction.py" %CMD_WARPARAMS% %CMD_USER% %CMD_PASSWORD% %CMD_APIKEY% %CMD_LOGFILE% %CMD_OUTPUTFOLDER% %CMD_APPFILTER% %CMD_QRIDFILTER% %CMD_QRNAMEFILTER% %CMD_COMPONLOCATIONFILTER% %CMD_ACTIONPLANFILTER% %CMD_EXCLUREQUESTFILTER% %CMD_CRITICALONLYFILTER% %CMD_VIOLATIONSTATUSFILTER% %CMD_COMPONSTATUSFILTER% %CMD_BCFILTER% %CMD_PRIMINVALUEFILTER% %CMD_TECHNOFILTER% %CMD_COMPONENTSFILTER% %CMD_VIOLATIONSFILTER% %CMD_CREATEEXCLUSIONS% %CMD_CREATEACTIONPLANS% %CMD_ACTIONPLANINPUTTAG% %CMD_COMMENT% %CMD_DETAILLEVEL% %CMD_CSVFILE% %CMD_NBROWS% %CMD_DISPLAYSOURCE%
+SET CMD="%PYTHONPATH%\python" "%~dp0violation_extraction.py" %CMD_RESTAPIURL% %CMD_EDURL% %CMD_USER% %CMD_PASSWORD% %CMD_APIKEY% %CMD_LOGFILE% %CMD_OUTPUTFOLDER% %CMD_APPFILTER% %CMD_QRIDFILTER% %CMD_QRNAMEFILTER% %CMD_COMPONLOCATIONFILTER% %CMD_ACTIONPLANFILTER% %CMD_EXCLUREQUESTFILTER% %CMD_CRITICALONLYFILTER% %CMD_VIOLATIONSTATUSFILTER% %CMD_COMPONSTATUSFILTER% %CMD_BCFILTER% %CMD_PRIMINVALUEFILTER% %CMD_TECHNOFILTER% %CMD_COMPONENTSFILTER% %CMD_VIOLATIONSFILTER% %CMD_CREATEEXCLUSIONS% %CMD_CREATEACTIONPLANS% %CMD_ACTIONPLANINPUTTAG% %CMD_COMMENT% %CMD_DETAILLEVEL% %CMD_CSVFILE% %CMD_NBROWS% %CMD_DISPLAYSOURCE%
 ECHO %CMD%
 %CMD%
 SET RETURNCODE=%ERRORLEVEL%

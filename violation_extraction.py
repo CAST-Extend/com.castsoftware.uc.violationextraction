@@ -19,6 +19,38 @@ import time
 #Security,Efficiency,Robustness,Transferability,Changeability
 bcids = ["60016","60014","60013","60012","60011"]
 setcookie = None
+
+class ObjectViolationMetric:
+    componentType = '<Not extracted>'
+    criticalViolations = '<Not extracted>'
+    cyclomaticComplexity = '<Not extracted>'
+    codeLines = '<Not extracted>'
+    commentLines = '<Not extracted>'
+    ratioCommentLinesCodeLines = '<Not extracted>'
+    commentedCodeLines = None
+    fanIn = None
+    fanOut = None
+    halsteadProgramLength = None
+    halsteadProgramVocabulary = None
+    halsteadVolume = None
+    distinctOperators = None
+    distinctOperands = None
+    integrationComplexity = None
+    criticalViolations = None
+
+class RulePatternDetails:
+    def __init__(self):
+        self.associatedValueName = ''
+        self.listQualityStandard = []
+
+    def get_quality_standards(self):
+        strqualitystandards = ''
+        #print(len(self.listQualityStandard))
+        for qs in self.listQualityStandard:
+            strqualitystandards += qs + ","
+        if strqualitystandards != '': strqualitystandards = strqualitystandards[:-1]
+        return strqualitystandards
+
 ########################################################################
 # retrieve the connection depending on 
 def open_connection(logger,host,protocol):
@@ -251,7 +283,84 @@ def create_actionplans(logger, connection, warname, user, password, apikey, uria
 def get_objectviolation_metrics(logger, connection, warname, user, password, apikey, objHref):
     logger.debug("Extracting the component metrics")    
     request = objHref
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+    json_component = execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+    obj = None
+    if json_component != None:
+        obj = ObjectViolationMetric()
+        try:
+            obj.componentType = json_component['type']['label']
+        except KeyError:
+            None                              
+        try:
+            obj.codeLines = json_component['codeLines']
+            if obj.codeLines == None :  obj.codeLines = 0
+        except KeyError:
+            obj.codeLines = 0
+        try:
+            obj.commentedCodeLines = json_component['commentedCodeLines']
+            if obj.commentedCodeLines == None :  obj.commentedCodeLines = 0
+        except KeyError:
+            obj.commentedCodeLines = 0                                          
+        try:
+            obj.commentLines = json_component['commentLines']
+            if obj.commentLines == None :  obj.commentLines = 0
+        except KeyError:
+            obj.commentLines = 0
+              
+        try:
+            obj.fanIn = json_component['fanIn']
+        except KeyError:
+            obj.fanIn = 0
+        try:
+            obj.fanOut = json_component['fanOut']
+        except KeyError:
+            obj.fanOut = 0 
+        try:
+            obj.cyclomaticComplexity = json_component['cyclomaticComplexity']
+        except KeyError:
+            obj.cyclomaticComplexity ='Not available'   
+        #Incorrect ratio, recomputing manually
+        #try:
+        #    obj.ratioCommentLinesCodeLines = json_component['ratioCommentLinesCodeLines']
+        #except KeyError:
+        #    obj.ratioCommentLinesCodeLines = None
+
+        obj.ratioCommentLinesCodeLines = None
+        if obj.codeLines != None and obj.commentLines != None and obj.codeLines != 'Not available' and obj.commentLines != 'Not available' and (obj.codeLines + obj.commentLines != 0) :
+            obj.ratioCommentLinesCodeLines = obj.commentLines / (obj.codeLines + obj.commentLines) 
+        else:
+            obj.ratioCommentLinesCodeLines = 0
+        try:
+            obj.halsteadProgramLength = json_component['halsteadProgramLength']
+        except KeyError:
+            obj.halsteadProgramLength = 0
+        try:
+            obj.halsteadProgramVocabulary = json_component['halsteadProgramVocabulary']
+        except KeyError:
+            obj.halsteadProgramVocabulary = 0
+        try:
+            obj.halsteadVolume = json_component['halsteadVolume']
+        except KeyError:
+            obj.halsteadVolume = 0 
+        try:
+            obj.distinctOperators = json_component['distinctOperators']
+        except KeyError:
+            obj.distinctOperators = 0 
+        try:
+            obj.distinctOperands = json_component['distinctOperands']
+        except KeyError:
+            obj.distinctOperands = 0                                             
+        try:
+            obj.integrationComplexity = json_component['integrationComplexity']
+        except KeyError:
+            obj.integrationComplexity = 0
+        try:
+            obj.criticalViolations = json_component['criticalViolations']
+        except KeyError:
+            obj.criticalViolations = 'Not available'
+
+    return obj
+    
 
 ########################################################################
 
@@ -265,7 +374,21 @@ def get_objectviolation_findings(logger, connection, warname, user, password, ap
 def get_rule_pattern(logger, connection, warname, user, password, apikey, rulepatternHref):
     logger.debug("Extracting the rule pattern details")   
     request = rulepatternHref
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+    json_rulepattern = execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
+    obj = None
+    if json_rulepattern != None:
+        obj = RulePatternDetails()    
+        try:
+            obj.associatedValueName = json_rulepattern['associatedValueName']
+        except KeyError:
+            None
+        try:
+            qslist = json_rulepattern['qualityStandards']
+            for qs in qslist:
+                obj.listQualityStandard.append(qs['standard']+"/"+qs['id'])
+        except KeyError:
+            None
+    return obj 
 
 ########################################################################
 
@@ -300,7 +423,7 @@ def get_sourcecode(logger, connection, sourceCodesHref, warname, user, password,
 
 def get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey):
     strstartendlineparams = ''
-    if srcstartline >= 0 and srcendline >= 0:
+    if srcstartline != None and srcstartline >= 0 and srcendline != None and srcendline >= 0:
         strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
     return execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
      
@@ -1043,6 +1166,10 @@ if __name__ == '__main__':
                                             #    csvdata.append(it)
                                             csvdatas.append(msg)
 
+                                        # object cache to avoid redoing the same Rest API Calls
+                                        dicObjectViolationMetrics = {}
+                                        dictQualityPatternDetails = {}
+
                                         lastProgressReported = None
                                         for violation in json_violations:
                                             iCouterRestAPIViolations += 1
@@ -1131,8 +1258,9 @@ if __name__ == '__main__':
                                                 # example DOMAIN08/components/165586,DOMAIN08/components/166686
                                                 continue
 
-                                            # filter the violations that are not in the list if a list of violations href is provided
-                                            if violationsfilter != None and qrrulepatternhref+'#'+componentHref not in violationsfilter: 
+                                            # filter the violations that are not in the list if a list of violations id is provided
+                                            violationid = qrrulepatternhref+'#'+componentHref 
+                                            if violationsfilter != None and violationid not in violationsfilter: 
                                                 # example : DOMAIN08/rule-patterns/7778#DOMAIN08/components/137407/snapshots/21,DOMAIN08/rule-patterns/7776#DOMAIN08/components/13766/snapshots/21                                          
                                                 continue
                                                 
@@ -1187,121 +1315,45 @@ if __name__ == '__main__':
                                             
                                             ######################################################################################################################################                                           
                                             # get more details from the component URI
-                                            json_component = None
+                                            objViolationMetric = None
                                             if not bload_objectviolation_metrics:
                                                 logger.debug("NOT Extracting the component metrics") 
                                             else:
                                                 if detaillevel == 'Full':
-                                                    #TODO:add a cache to avoid reloading several time the same object
-                                                    json_component = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
-                                            
-                                            componentType = '<Not extracted>'
-                                            criticalViolations = '<Not extracted>'
-                                            cyclomaticComplexity = '<Not extracted>'
-                                            codeLines = '<Not extracted>'
-                                            commentLines = '<Not extracted>'
-                                            ratioCommentLinesCodeLines = '<Not extracted>'
-                                            if json_component != None:
-                                                try:
-                                                    componentType = json_component['type']['label']
-                                                except KeyError:
-                                                    None                              
-                                                try:
-                                                    codeLines = json_component['codeLines']
-                                                    if codeLines == None :  codeLines = 0
-                                                except KeyError:
-                                                    codeLines = 0
-                                                try:
-                                                    commentedCodeLines = json_component['commentedCodeLines']
-                                                    if commentedCodeLines == None :  commentedCodeLines = 0
-                                                except KeyError:
-                                                    commentedCodeLines = 0                                          
-                                                try:
-                                                    commentLines = json_component['commentLines']
-                                                    if commentLines == None :  commentLines = 0
-                                                except KeyError:
-                                                    commentLines = 0
-                                                      
-                                                try:
-                                                    fanIn = json_component['fanIn']
-                                                except KeyError:
-                                                    fanIn = 0
-                                                try:
-                                                    fanOut = json_component['fanOut']
-                                                except KeyError:
-                                                    fanOut = 0 
-                                                try:
-                                                    cyclomaticComplexity = json_component['cyclomaticComplexity']
-                                                except KeyError:
-                                                    cyclomaticComplexity ='Not available'   
-                                                '''
-                                                Incorrect ratio, recomputing manually
-                                                try:
-                                                    ratioCommentLinesCodeLines = json_component['ratioCommentLinesCodeLines']
-                                                except KeyError:
-                                                    ratioCommentLinesCodeLines = None
-                                                '''
-                                                ratioCommentLinesCodeLines = None
-                                                if codeLines != None and commentLines != None and codeLines != 'Not available' and commentLines != 'Not available' and (codeLines + commentLines != 0) :
-                                                    ratioCommentLinesCodeLines = commentLines / (codeLines + commentLines) 
-                                                else:
-                                                    ratioCommentLinesCodeLines = 0
-                                                try:
-                                                    halsteadProgramLength = json_component['halsteadProgramLength']
-                                                except KeyError:
-                                                    halsteadProgramLength = 0
-                                                try:
-                                                    halsteadProgramVocabulary = json_component['halsteadProgramVocabulary']
-                                                except KeyError:
-                                                    halsteadProgramVocabulary = 0
-                                                try:
-                                                    halsteadVolume = json_component['halsteadVolume']
-                                                except KeyError:
-                                                    halsteadVolume = 0 
-                                                try:
-                                                    distinctOperators = json_component['distinctOperators']
-                                                except KeyError:
-                                                    distinctOperators = 0 
-                                                try:
-                                                    distinctOperands = json_component['distinctOperands']
-                                                except KeyError:
-                                                    distinctOperands = 0                                             
-                                                try:
-                                                    integrationComplexity = json_component['integrationComplexity']
-                                                except KeyError:
-                                                    integrationComplexity = 0
-                                                try:
-                                                    criticalViolations = json_component['criticalViolations']
-                                                except KeyError:
-                                                    criticalViolations = 'Not available'
-                                            json_component = None
-
+                                                    #Looking in the cache first
+                                                    objViolationMetric = dicObjectViolationMetrics.get(componentHref)
+                                                    #If cache is empty we load from the rest api 
+                                                    if objViolationMetric == None:
+                                                        objViolationMetric = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
+                                                        if objViolationMetric != None:
+                                                            dicObjectViolationMetrics.update({componentHref:objViolationMetric})
+                                                    else:
+                                                        None
                                             #####################################################################################################
-
-                                            associatedValueName = None
-                                            strqualitystandards = '<Not extracted>'
+                                            objRulePatternDetails = None
                                             json_rulepattern = None
                                             if not bload_rule_pattern:
                                                 logger.debug("NOT Extracting the rule pattern details")                                                
                                             else:
                                                 if detaillevel == 'Full':
-                                                    #TODO:add a cache to avoid reloading several time the same rule
-                                                    json_rulepattern = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
-                                            if json_rulepattern != None:
-                                                try:
-                                                    associatedValueName = json_rulepattern['associatedValueName']
-                                                except KeyError:
-                                                    None
-                                                try:
-                                                    strqualitystandards = ''
-                                                    qslist = json_rulepattern['qualityStandards']
-                                                    for qs in qslist:
-                                                        strqualitystandards += qs['standard']+"/"+qs['id'] + ","
-                                                    if strqualitystandards != '': strqualitystandards = strqualitystandards[:-1]
-                                                except KeyError:
-                                                    None
-                                            if associatedValueName == None : associatedValueName = ''
-                                            json_rulepattern = None
+                                                    #Looking in the cache first
+                                                    objRulePatternDetails = dictQualityPatternDetails.get(qrrulepatternhref)                                                    
+                                                    #If cache is empty we load from the rest api
+                                                    if objRulePatternDetails == None:
+                                                        objRulePatternDetails = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
+                                                        if objRulePatternDetails != None:
+                                                            dictQualityPatternDetails.update({qrrulepatternhref:objRulePatternDetails})
+                                                    else:
+                                                        None                                                            
+                                            associatedValueName = ''
+                                            if objRulePatternDetails != None and objRulePatternDetails.associatedValueName != None:
+                                                associatedValueName = objRulePatternDetails.associatedValueName
+                                            strqualitystandards = '<Not extracted>'
+                                            
+                                            if objRulePatternDetails != None: 
+                                                qs = objRulePatternDetails.get_quality_standards()
+                                                if qs != None:
+                                                    strqualitystandards = qs
 
                                             #####################################################################################################
                                             associatedvaluelabel = '<Not extracted>'
@@ -1310,6 +1362,7 @@ if __name__ == '__main__':
                                             strparams = '<Not extracted>'
                                             json_findings = None
                                             srcCode = []
+                                            srcCodeReference = []
 
                                             if not bload_objectviolation_findings:
                                                 logger.info("NOT Extracting the component findings")
@@ -1376,8 +1429,8 @@ if __name__ == '__main__':
                                                 json_findings = None
                                                 
                                             # Do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
-                                            if qrid == 7294:
-                                                continue
+                                            #if qrid == "7294":
+                                            #    continue
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
@@ -1388,29 +1441,53 @@ if __name__ == '__main__':
                                                             filename = src['file']['name']
                                                             filehref = src['file']['href']
                                                             filesize = src['file']['size']
-                                                            srcstartline = src['startLine']
-                                                            srcendline = src['endLine']
+                                                            srcstartline = None
+                                                            srcendline = None
+                                                            try:
+                                                                srcstartline = src['startLine']
+                                                            except:
+                                                                None
+                                                            try:
+                                                                srcendline = src['endLine']
+                                                            except:
+                                                                None                                                                
                                                             filereference = filename
                                                             strstartendlineparams = ''
                                                             if srcstartline >= 0 and srcendline >= 0:
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
-
+                                                            srcCodeReference.append(filereference)
                                                             partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)
+                                                            if partialfiletxt == None:
+                                                                log.info("Second try without the line numbers")
+                                                                partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, None, None, user, password, apikey)
+                                                                if partialfiletxt != None:
+                                                                    log.info("Second try worked")
+                                                            if partialfiletxt == None:
+                                                                logger.warning("Couldn't extract the file " + filehref)
                                                             if partialfiletxt != None:
                                                                 filewithlinesnumber = ''
-                                                            if qrid != 7294:
-                                                                if srcstartline >= 0 :
-                                                                    filelines = partialfiletxt.split("\n")
-                                                                    iline = srcstartline
-                                                                    for line in filelines:
-                                                                        filewithlinesnumber += str(iline) + ' ' +  line + '\n'
-                                                                        iline += 1
-                                                                    srcCode.append(filereference + '\n' + filewithlinesnumber)
-                                                                else: srcCode.append(filereference + '\n' + partialfiletxt)
-                                                            elif qrid == 7294:
+                                                                srcToBeAddedToCsv = ''
                                                                 # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
-                                                                # only the file name is enough, cause it's not providing much value 
-                                                                srcCode.append(filereference)
+                                                                if qrid != "7294":
+                                                                    txtSrcCode = ''
+                                                                    if srcstartline >= 0 :
+                                                                        filelines = partialfiletxt.split("\n")
+                                                                        iline = srcstartline
+                                                                        for line in filelines:
+                                                                            # add line number and remove ; characters from the code
+                                                                            filewithlinesnumber += str(iline) + ' ' +  line.replace(";", "<#>") + '\n'
+                                                                            iline += 1
+                                                                        txtSrcCode = filereference + '\n' + filewithlinesnumber
+                                                                    else: 
+                                                                        txtSrcCode = filereference + '\n' + partialfiletxt
+                                                                    srcToBeAddedToCsv = txtSrcCode 
+                                                                    
+                                                                elif qrid == "7294":
+                                                                    # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
+                                                                    # only the file name is enough, cause it's not providing much value 
+                                                                    srcToBeAddedToCsv = filereference
+                                                                srcCode.append(srcToBeAddedToCsv)
+                                                                #print(srcToBeAddedToCsv)
                                                             partialfiletxt = None     
                                                     json_sourcescode = None
                                             else:
@@ -1427,13 +1504,16 @@ if __name__ == '__main__':
                                             strprogress = str(iCounterFilteredViolations) + "/" + str(violations_size) + "/" + str(intotalviol)
                                             strtotalviol = str(intotalviol)[:-2]
                                             strtotalcritviol = str(intotalcritviol)[:-2]
+                                            objViolationMetric = dicObjectViolationMetrics.get(componentHref)
+                                            if objViolationMetric == None:
+                                                objViolationMetric = ObjectViolationMetric() 
                                             msg = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
                                             #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
                                             msg +=  ";" + strtotalcritviol + ";" + strtotalviol 
                                             msg += ";" + str(qrid)+ ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
                                             msg += ";" + str(tqiqm[qrid].get('failedchecks')) + ";" + str(tqiqm[qrid].get('ratio')) + ";" + str(tqiqm[qrid].get('addedViolations')) + ";" + str(tqiqm[qrid].get('removedViolations'))
 
-                                            msg += ";" + str(componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
+                                            msg += ";" + str(objViolationMetric.componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
                                             msg += ";" + str(technicalcriteriaidandnames)
                                             #
                                             strlistbc = ''
@@ -1458,7 +1538,7 @@ if __name__ == '__main__':
                                                                     strlistbc = strlistbc + '60012#Changeability,'
                                             if strlistbc != '': strlistbc = strlistbc[:-1]
                                             msg += ";" + strlistbc
-                                            msg += ";" + strqualitystandards
+                                            msg += ";" + str(strqualitystandards)
                                                                                                                                                                                                                                         
                                             #########################################################################
                                             # current PRI focus
@@ -1636,16 +1716,15 @@ if __name__ == '__main__':
                                             msg += ";" +  strtrans                                           
                                             #########################################################################                                                                                        
                                             msg += ";"
-                                            if criticalViolations != None: msg += str(criticalViolations)
+                                            if objViolationMetric.criticalViolations != None: msg += str(objViolationMetric.criticalViolations)
                                             msg += ";"
-                                            if cyclomaticComplexity != None: msg += str(cyclomaticComplexity)
+                                            if objViolationMetric.cyclomaticComplexity != None: msg += str(objViolationMetric.cyclomaticComplexity)
                                             msg += ";"
-                                            if codeLines != None: msg += str(codeLines)
+                                            if objViolationMetric.codeLines != None: msg += str(objViolationMetric.codeLines)
                                             msg += ";"
-                                            if commentLines != None: msg += str(commentLines)
+                                            if objViolationMetric.commentLines != None: msg += str(objViolationMetric.commentLines)
                                             msg += ";"
-                                            if ratioCommentLinesCodeLines != None: msg += str(ratioCommentLinesCodeLines)
-
+                                            if objViolationMetric.ratioCommentLinesCodeLines != None: msg += str(objViolationMetric.ratioCommentLinesCodeLines)
     
                                             #########################################################################                                  
                                             
@@ -1679,7 +1758,7 @@ if __name__ == '__main__':
                                             currentviolurl = currentviolfullurl
                                             msg += ";" + currentviolurl
                                             msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
-                                            msg += ";"+ str(qrrulepatternhref) + "#" + str(componentHref)
+                                            msg += ";"+ violationid
                                             msg += ";"+ strbookmarks
                                             # remove unicode characters that are making the reporting fails
                                             msg = remove_unicode_characters(msg)
@@ -1691,13 +1770,29 @@ if __name__ == '__main__':
                                             #print(strprogress + "=>" + currentviolurl + '#' +qrrulepatternhref+ '#'+componentHref)
                                             #########################################################################
                                             try:
+                                                '''
+                                                # log only the file reference instead of code
+                                                if len(srcCodeReference) > 0:
+                                                    for srcref in srcCodeReference:
+                                                        msg += ';"'+ srcref + '"'                                    
+                                                '''
                                                 if len(srcCode) > 0:
+                                                    iNbCodeCol = 0
                                                     for src in srcCode:
+                                                        iNbCodeCol += 1
+                                                        # Stop at 100 columns
+                                                        if iNbCodeCol > 100:
+                                                            msg += ';...'
+                                                            break
                                                         #msg += ';"'+ str(src).replace('"', '""') + '"'
                                                         # we add only the first 5000 characters
                                                         msg += ';"'+ str(src).replace('"','""')[0:5000] + '"'
+                                                    # if ends with " we need to double this character, else the return chariot will not work in Excel
+                                                    #if msg[-1:] == '"':
+                                                    #    msg += '"'
                                                 else:
                                                     msg += ';N/A'
+                                                #print(remove_unicode_characters(msg))
                                             except: # catch *all* exceptions
                                                 msg += ';Error'
                                                 tb = traceback.format_exc()

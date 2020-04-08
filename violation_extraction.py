@@ -1474,6 +1474,8 @@ if __name__ == '__main__':
                                                                         filelines = partialfiletxt.split("\n")
                                                                         iline = srcstartline
                                                                         for line in filelines:
+                                                                            if iline == 1487: 
+                                                                                None
                                                                             # add line number and remove ; characters from the code
                                                                             filewithlinesnumber += str(iline) + ' ' +  line.replace(";", "<#>") + '\n'
                                                                             iline += 1
@@ -1786,10 +1788,14 @@ if __name__ == '__main__':
                                                             break
                                                         #msg += ';"'+ str(src).replace('"', '""') + '"'
                                                         # we add only the first 5000 characters
-                                                        msg += ';"'+ str(src).replace('"','""')[0:5000] + '"'
-                                                    # if ends with " we need to double this character, else the return chariot will not work in Excel
-                                                    #if msg[-1:] == '"':
-                                                    #    msg += '"'
+                                                        msg += ';"'
+                                                        # if ends with " we need to double this character, else the return chariot will not work in Excel
+                                                        strsrcTruncated = str(src).replace('"','""')[0:5000]
+                                                        msg += strsrcTruncated
+                                                        # last character is a " and the previous character is not a "
+                                                        if msg[-1:] == '"' and msg[-2:-1] != '"':
+                                                            msg += '"'
+                                                        msg += '"'
                                                 else:
                                                     msg += ';N/A'
                                                 #print(remove_unicode_characters(msg))

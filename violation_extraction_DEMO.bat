@@ -1,7 +1,12 @@
 @echo off
 
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+REM configure python path if not defined
+REM min version to use is Python 3.4
 SET AIP_DEFAULT_BIN_DIR=C:\Program Files\CAST\8.3
-IF "%PYTHONPATH%"=="" SET PYTHONPATH=%AIP_DEFAULT_BIN_DIR%\ThirdParty\Python34
+SET PYTHON_PATH_IF_NOT_DEF_IN_ENV=PYTHONPATH=%AIP_DEFAULT_BIN_DIR%\ThirdParty\Python34
+IF "%PYTHONPATH%"=="" SET PYTHONPATH=%PYTHON_PATH_IF_NOT_DEF_IN_ENV%
+"%PYTHONPATH%\python" -V
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Rest API URL  : http|https://host(:port)(/EngineeringWarName) or http|https://host(:port)(/CAST-RESTAPIWarName) 
@@ -46,13 +51,13 @@ SET CMD_APPFILTER=-applicationfilter "%APPFILTER%"
 :: Quality rule id regexp filter
 ::SET QRIDFILTER=7802|7804
 SET CMD_QRIDFILTER=
-::SET CMD_QRIDFILTER=%QRIDFILTER%
+::SET CMD_QRIDFILTER=-qridfilter %QRIDFILTER%
 
 
 :: Quality rule name regexp  filter
 ::SET QRNAMEFILTER=
 SET CMD_QRNAMEFILTER=
-::SET CMD_QRIDFILTER=-qridfilter "%QRNAMEFILTER%"
+::SET CMD_QRNAMEFILTER=-qrnamefilter "%QRNAMEFILTER%"
 
 
 :: Component location regexp (aka object full name) filter
@@ -113,7 +118,7 @@ SET CMD_PRIMINVALUEFILTER=
 :: Technology list filter
 ::SET TECHNOFILTER=JEE,SQL
 SET CMD_TECHNOFILTER=
-::SET CMD_TECHNOFILTER=-priminvaluefilter "%TECHNOFILTER%"
+::SET CMD_TECHNOFILTER=-technofilter "%TECHNOFILTER%"
 
 
 :: Components filter list, using the Rest API component href

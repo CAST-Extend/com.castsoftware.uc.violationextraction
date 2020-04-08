@@ -17,7 +17,8 @@
     </dependencies>
   </metadata>
 	<files>
-	  <file src="**\*.py;**\*.nuspec;README.md;**\*licences**\*;**\*.png;**\*DEMO.bat" exclude="**\*test**\*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/> 
+	  <file src="**\*.py;**\*.nuspec;README.md;**\*.png;**\*DEMO.bat" exclude="test\**\*.*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/>
+	  <file src="licences\**\*.*;licences\**\*COPYING" target="./" />
 	</files> 
 	
 	

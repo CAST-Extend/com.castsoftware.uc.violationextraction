@@ -29,9 +29,10 @@ It allows also to create if required action plan items from the above created fi
 
 <a name="situation"></a>
 # In what situation should you install this extension?
+When you cant to prioritize the CAST AIP violations using the component PRI, contribution to a particuliar transaction, highest transaction contrintion TRI per health factors and other metrics like number of critical violations for the component, LOC, cyclomatic complexity...    
 When you want to generate an CSV report containing the list of quality rules violations for the CAST AIP plateform  
-When you want to create automated action plan based on several technical criteria (quality rule name, object fullname, violations status, ...)
-When you want to create automated exclusions based on several technical criteria (quality rule name, object fullname, violations status, ...)      
+When you want to create automated action plan based on several criteria (quality rule name, object fullname, violations status, ...)
+When you want to create automated exclusions based on several criteria (quality rule name, object fullname, violations status, ...)      
 
 <a name="aipcompatibility"></a>
 # CAST AIP versions compatibility
@@ -53,12 +54,12 @@ Run the batch file or the command line running the python script
 
 <a name="expect"></a>
 # What results can you expect?
-For each application, and only for the last snapshot : 
+For each application, and only for the last snapshot: 
 (option) 1 CSV file containing the list of violations corresponding to the filters configured   
 (option) if the option is selected, the violations can be added in the action  
 (option) if the option is selected, the violations can be excluded   
 
-Data extracted :  
+Data extracted:  
 - Application name (Simple/Intermediate/Full)  
 - Snapshot date and version  
 - Index of the violation number filtered (Simple/Intermediate/Full)  
@@ -97,28 +98,28 @@ Data extracted :
 - Bookmarks begin line & end line numbers (Full)  
 - Source code sniplet (Simple/Intermediate/Full), only if the -displaysource parameter is true. First 5000 characters for each code sniplet displayed in the dashboard for this violation  
 
-Violations parameter filters available :   
-- Report detail level : -detaillevel Simple/Intermediate/Full (has a high impact on performance)  
-- Application name (regexp) : -applicationfilter, if Empty all the application that are configured in the different engineering domains will be processed  
+Violations parameter filters available:   
+- Report detail level: -detaillevel Simple/Intermediate/Full (has a high impact on performance)  
+- Application name (regexp): -applicationfilter, if Empty all the application that are configured in the different engineering domains will be processed  
 - Generated a CSV file ? -csvfile true/false, default = false  
 - Is critical violation ? -criticalrulesonlyfilter= true/false, default "Empty" (All) => has a high impact on performance  
-- Quality rule id (regexp) : -qridfilter  
-- Quality rule name (regexp) : -qrnamefilter  
-- Component location/fulname (regexp) : -componentnamelocationfilter  
+- Quality rule id (regexp): -qridfilter  
+- Quality rule name (regexp): -qrnamefilter  
+- Component location/fulname (regexp): -componentnamelocationfilter  
 - In an action plan ? -actionplanfilter = true/false, default false  
 - Has exclusion request ? -exclusionrequestfilter= true/false, default false  
-- Violation status : -violationstatusfilter = added/unchanged, default "Empty" (All)  
-- Component status : -componentstatusfilter = added/unchanged/updated, default "Empty" (All)  
-- PRI minimum value : -priminvaluefilter (PRI int value), requires -businesscriterionfilter to bet set only with one business criterion value  
-- Business criterion : -businesscriterionfilter (60017,60016,60013,60014,60011,60012), can be a multiple value, separated with comma, default "Empty" (All)  
-- Technology : -technofilter List of technologies separated by a comma, default "Empty" (All)  
-- Components : -componentsfilter List of components URI, default "Empty" (All)  
-- Violations : -violationsfilter List of violations "Id" = quality rule URI#component URI, separated by comma, default "Empty" (All)   
+- Violation status: -violationstatusfilter = added/unchanged, default "Empty" (All)  
+- Component status: -componentstatusfilter = added/unchanged/updated, default "Empty" (All)  
+- PRI minimum value: -priminvaluefilter (PRI int value), requires -businesscriterionfilter to bet set only with one business criterion value  
+- Business criterion: -businesscriterionfilter (60017,60016,60013,60014,60011,60012), can be a multiple value, separated with comma, default "Empty" (All)  
+- Technology: -technofilter List of technologies separated by a comma, default "Empty" (All)  
+- Components: -componentsfilter List of components URI, default "Empty" (All)  
+- Violations: -violationsfilter List of violations "Id" = quality rule URI#component URI, separated by comma, default "Empty" (All)   
 - Display the code sniplets ? -displaysource true/false, default false.  
 - Create exclusion request for the selected violations that are not already in an exclusion request ? -createexclusions true/false, default false  
 - Create action plan item for the selected violations that are not already in an action plan ? -createactionplans true/false, default false  
-- Action plan tag (new name for priority) : -actionplaninputtag, default = moderate  
-- Comment for the action plan item/exclusion request created : -comment, default is 'Automated exclusion' for exclusion request, 'Automated action plan' for action plan  
+- Action plan tag (new name for priority): -actionplaninputtag, default = moderate  
+- Comment for the action plan item/exclusion request created: -comment, default is 'Automated exclusion' for exclusion request, 'Automated action plan' for action plan  
 - Log level -loglevel INFO/DEBUG, default INFO  
 - Maximum number of rows -nbrows int value, default 1000000000 (has a high impact of performance, but is truncating the data)  
 
@@ -131,7 +132,7 @@ N/A
 
 <a name="knownIssues"></a>
 # Known issues
-- Some quality rules information or source code snipplet might contain unicode characters that provokes the script to abort, except for a set unicode characters already identified 
+None
 
 <a name="limitations"></a>
 - Only the last snapshot is considered
@@ -139,6 +140,10 @@ N/A
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.0.6
+Performance improvement for the Full level detail
+Minor fixed in the source code extraction
+Improvement in the progress display in the log/standard output
 ## Version 1.0.4
 Minor fixes for the actionplanfilter
 ## Version 1.0.3

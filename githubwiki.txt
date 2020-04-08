@@ -141,9 +141,9 @@ None
 <a name="rn"></a>
 # Release Notes
 ## Version 1.0.6
-Performance improvement for the Full level detail
-Minor fixed in the source code extraction
-Improvement in the progress display in the log/standard output
+Performance improvement for the Full level detail    
+Minor fixed in the source code extraction  
+Improvement in the progress display in the log/standard output  
 ## Version 1.0.4
 Minor fixes for the actionplanfilter
 ## Version 1.0.3

@@ -1,4 +1,4 @@
-<?xml version="1.0"?>
+ <?xml version="1.0"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
   <metadata>
     <id>com.castsoftware.uc.violationextraction</id>
@@ -18,7 +18,7 @@
   </metadata>
 	<files>
 	  <file src="**\*.py;**\*.nuspec;README.md;**\*.png;**\*DEMO.bat" exclude="test\**\*.*;**\*.csv;**\*.log;**\*.gitignore;**\*.xml;**githubwiki**\*.txt" target="./"/>
-	  <file src="licences\**\*.*;licences\**\*COPYING" target="./" />
+	  <file src="licences\**\*.*;licences\**\*COPYING" target="./licences" />
 	</files> 
 	
 	

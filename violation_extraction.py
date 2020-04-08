@@ -852,6 +852,7 @@ if __name__ == '__main__':
         # log params
         logger.info('********************************************')
         logger.info('script_version='+script_version)
+        logger.info('python version='+sys.version)
         logger.info('****************** params ******************')
         logger.info('restapiurl='+restapiurl)
         logger.info('edurl='+edurl)
@@ -1458,10 +1459,10 @@ if __name__ == '__main__':
                                                             srcCodeReference.append(filereference)
                                                             partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)
                                                             if partialfiletxt == None:
-                                                                log.info("Second try without the line numbers")
+                                                                logger.info("Second try without the line numbers")
                                                                 partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, None, None, user, password, apikey)
                                                                 if partialfiletxt != None:
-                                                                    log.info("Second try worked")
+                                                                    logger.info("Second try worked")
                                                             if partialfiletxt == None:
                                                                 logger.warning("Couldn't extract the file " + filehref)
                                                             if partialfiletxt != None:

@@ -20,6 +20,28 @@ import time
 bcids = ["60016","60014","60013","60012","60011"]
 setcookie = None
 
+########################################################################
+
+# violation class
+class Violation:
+    id = None
+    qrid = None
+    qrname = None
+    critical = None
+    componentid = None
+    componentShortName = None
+    componentNameLocation = None
+    hasActionPlan = False
+    actionplanstatus = ''
+    actionplantag = ''
+    actionplancomment = ''
+    hasExclusionRequest = False
+    url = None
+    violationstatus = None
+    componentstatus = None
+
+########################################################################
+
 class ObjectViolationMetric:
     componentType = '<Not extracted>'
     criticalViolations = '<Not extracted>'
@@ -38,6 +60,8 @@ class ObjectViolationMetric:
     integrationComplexity = None
     criticalViolations = None
 
+########################################################################
+
 class RulePatternDetails:
     def __init__(self):
         self.associatedValueName = ''
@@ -50,6 +74,26 @@ class RulePatternDetails:
             strqualitystandards += qs + ","
         if strqualitystandards != '': strqualitystandards = strqualitystandards[:-1]
         return strqualitystandards
+
+########################################################################
+def loginfo(logger, msg, tosysout = False):
+    logger.info(msg)
+    if tosysout:
+        print(msg)
+
+########################################################################
+def logwarning(logger, msg, tosysout = False):
+    logger.warning(msg)
+    if tosysout:
+        print("#### " + msg)
+
+########################################################################
+def logerror(logger, msg, tosysout = False):
+    logger.error(msg)
+    if tosysout:
+        print("#### " + msg)
+
+########################################################################
 
 ########################################################################
 # retrieve the connection depending on 
@@ -100,7 +144,7 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
         request_headers.update({'Authorization':'Basic %s' %  user_and_pass})
     # else if the api key is provided
     elif apikey != None and apikey != 'N/A':
-        print (apikey)
+        #print (apikey)
         # API key configured in the WAR
         request_headers.update({'X-API-KEY:':apikey})
         # we are provide a user name hardcoded' 
@@ -130,9 +174,7 @@ def execute_request(logger, connection, requesttype, request, warname, user, pas
     
     # Error 
     if  response.status != 200:
-        msg = 'HTTPS request failed ' + str(response.status) + ' ' + str(response.reason) + ':' + request_text
-        print (msg)
-        logger.error(msg)
+        logerror(logger,'HTTPS request failed ' + str(response.status) + ' ' + str(response.reason) + ':' + request_text,True)
         return None
     
     # look for the Set-Cookie in response headers, to inject it for future requests
@@ -411,7 +453,6 @@ def get_components_pri (logger, connection, warname, user, password, apikey, dom
     request = domain + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + '/components/' + str(bcid)
     request += '?startRow=1'
     request += '&nbRows=' + str(nbrows)
-    #print ('aarequest =' + request) 
     return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
      
 ########################################################################
@@ -448,7 +489,6 @@ def init_transactions (logger, connection, warname, usr, pwd, apikey,domain, app
                 
                 try:
                     name =  trans['name']
-                    #print(str(name))
                 except KeyError:
                     None  
                 try:
@@ -543,37 +583,7 @@ def initialize_bc_tch_mapping(logger, connection, warname, user, password, apike
 
 def remove_unicode_characters(astr):
     return astr.encode('ascii', 'ignore').decode("utf-8")
-
-    '''
-    # harcoded solution that will be removed later
-    mystr = mystr.replace('\ufb01', '')
-    mystr = mystr.replace('\ufb02', '')
-    mystr = mystr.replace('\u200b','')
-    
-    mystr = mystr.replace('\x80','')
-    mystr = mystr.replace('\x82','')
-    mystr = mystr.replace('\x83','')
-    mystr = mystr.replace('\x84', '')
-    mystr = mystr.replace('\x85', '')
-    mystr = mystr.replace('\x86', '')
-    mystr = mystr.replace('\x87', '')
-    mystr = mystr.replace('\x88', '')
-    mystr = mystr.replace('\x89', '')
-    mystr = mystr.replace('\x90', '')
-    mystr = mystr.replace('\x91', '')
-    mystr = mystr.replace('\x92', '')
-    mystr = mystr.replace('\x93','')
-    mystr = mystr.replace('\x94','')
-    mystr = mystr.replace('\x95', '')
-    mystr = mystr.replace('\x96','')
-    mystr = mystr.replace('\x97','')
-    mystr = mystr.replace('\x98','')
-    mystr = mystr.replace('\x99','')
-    mystr = mystr.replace('\x9c','')
-    mystr = mystr.replace('\x9f','')
-
-    return mystr
-    '''
+ 
 ########################################################################
 
 def init_parse_argument():
@@ -630,9 +640,7 @@ def generate_csvfile(logger, data, filepath):
             #msg = 'writing line ' + line#linesplited[0] 
             #logger.debug(msg)
             file.write(line + '\n') 
-        msg = 'File ' + filepath + ' generated with ' + str(len(data)) + ' lines'
-        print (msg)
-        logger.info(msg) 
+        loginfo(logger,'File ' + filepath + ' generated with ' + str(len(data)) + ' lines',True)
 
 ########################################################################
 
@@ -899,9 +907,7 @@ if __name__ == '__main__':
         
         logger.info('********************************************')    
         connection = open_connection(logger, host, protocol)   
-        progressmsg = 'Initialization'
-        print(progressmsg)
-        logger.info(progressmsg)        
+        loginfo(logger,'Initialization',True)
         # few checks on the server
         json_server = None
         if not bload_serverdetail:
@@ -931,9 +937,8 @@ if __name__ == '__main__':
                 except KeyError:
                     pass
                 
-                msg = "Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains))
-                logger.info(msg)
-                print(msg)                 # only engineering domains
+                loginfo(logger,"Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains)),True)
+                # only engineering domains
                 if domain != 'AAD':  #and domain == 'AED_AYYILDIZ':
                     json_apps = get_applications(logger, connection, warname, user, password, apikey,domain)
                     applicationid = -1
@@ -958,9 +963,7 @@ if __name__ == '__main__':
                             logger.info('Skipping application : ' + appName)
                             continue                
                         elif applicationfilter == None or re.match(applicationfilter, appName):
-                            msg = "Processing application " + appName
-                            logger.info(msg)
-                            print(msg)
+                            loginfo(logger,"Processing application " + appName,True)
                             csvdatas = [] 
                             if csvfile != None and csvfile:
                                 # testing if csv file can be written
@@ -970,16 +973,11 @@ if __name__ == '__main__':
                                 while icount < 10 and is_locked(fpath):
                                     icount += 1
                                     filelocked = True
-                                    msg = 'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (fpath, str(icount))
-                                    logger.warn(msg)
-                                    print(msg)
+                                    logwarning(logger,'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (fpath, str(icount)),True)
                                     time.sleep(5)
                                 if is_locked(fpath):
-                                    msg = 'File %s is locked, aborting for application %s' % (fpath,appName)
-                                    logger.error(msg)
-                                    print(msg)
+                                    logerror(logger,'File %s is locked, aborting for application %s' % (fpath,appName),True)
                                     continue
-                                               
                             # snapshot list
                             json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,domain, applicationid)
                             if json_snapshots != None:
@@ -1002,9 +1000,7 @@ if __name__ == '__main__':
 
 
                                     # Number of violations / snapshots
-                                    progressmsg = 'Initialization (step 1/5)'
-                                    print(progressmsg)
-                                    logger.info(progressmsg)
+                                    loginfo(logger,'Initialization (step 1/5)',True)
                                     json_tot_violations = get_total_number_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid)
                                     intotalviol = -1
                                     intotalcritviol = -1
@@ -1017,14 +1013,11 @@ if __name__ == '__main__':
                                                     intotalcritviol = elm['result']['value']
                                                 elif elm['reference']['key'] == "67211":
                                                     intotalviol = elm['result']['value']
-                                    #print ('total / critical violations ' + str(intotalviol) + ' ' + str(intotalcritviol))
                                                                         
                                     # retrieve the mapping quality url id => technical criterion id
                                     tqiqm = {}
                                     json_snapshot_quality_model = None
-                                    progressmsg = 'Initialization (step 2/5)'
-                                    print(progressmsg)
-                                    logger.info(progressmsg)                                    
+                                    loginfo(logger,'Initialization (step 2/5)',True)
                                     if not bload_quality_model:
                                         logger.info("NOT Extracting the snapshot quality model")                                           
                                     else:
@@ -1050,9 +1043,7 @@ if __name__ == '__main__':
                                                 
                                         json_snapshot_quality_model = None
                                         
-                                    progressmsg = 'Initialization (step 3/5)'
-                                    print(progressmsg)
-                                    logger.info(progressmsg) 
+                                    loginfo(logger,'Initialization (step 3/5)',True)
                                     mapbctc = None                                     
                                     if not bload_bc_tch_mapping:
                                         logger.info("NOT Extracting the snapshot business criteria => technical criteria mapping")                                          
@@ -1060,9 +1051,7 @@ if __name__ == '__main__':
                                         mapbctc = initialize_bc_tch_mapping(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid, bcids)
                                     
                                     # Components PRI
-                                    progressmsg = 'Initialization (step 4/5)'
-                                    print(progressmsg)
-                                    logger.info(progressmsg) 
+                                    loginfo(logger,'Initialization (step 4/5)',True)
                                     comppri = None
                                     transactionlist = {}
                                     
@@ -1084,9 +1073,7 @@ if __name__ == '__main__':
                                     iCounterFilteredViolations = 0
                                     iCouterRestAPIViolations = 0
 
-                                    progressmsg = 'Initialization (step 5/5)'
-                                    print(progressmsg)
-                                    logger.info(progressmsg)                                      
+                                    loginfo(logger, 'Initialization (step 5/5)',True)
                                     # quality rules details (nb violations, % compliance)
                                     json_qr_results = None
                                     if not bload_qr_results:
@@ -1132,18 +1119,11 @@ if __name__ == '__main__':
                                                     if key != None and tqiqm.get(key) != None:
                                                         tqiqm.get(key).update({"failedchecks":failedchecks,"successfulChecks":successfulChecks,"totalChecks":totalChecks,"ratio":ratio,"addedViolations":addedViolations,"removedViolations":removedViolations})
                                                     
-                                            #    res2['']
-                                                # only the last snapshot
-                                            #    break                                                
                                             # only the last snapshot
                                             break
 
-                                    progressmsg = 'Extracting violations'
-                                    print(progressmsg)
-                                    logger.info(progressmsg)
-                                    progressmsg = 'Loading violations & components data from the REST API'
-                                    print(progressmsg)
-                                    logger.info(progressmsg)                                    
+                                    loginfo(logger, 'Extracting violations',True)
+                                    loginfo(logger, 'Loading violations & components data from the REST API',True)
                                     json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
                                     if json_violations != None:
                                         msg = 'Application name;Date;Version;Count (Filter)'
@@ -1177,66 +1157,60 @@ if __name__ == '__main__':
                                             currentviolurl = ''
                                             violations_size = len(json_violations)
                                             imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
-                                            '''
-                                            if imetricprogress in (9,19,29,39,49,59,69,79,89,99) : 
-                                                if lastProgressReported == None or lastProgressReported != imetricprogress:
-                                                    progressmsg = ' ' + str(imetricprogress+1) + '% of the violations processed (' + str(iCouterRestAPIViolations) + "/" + str(violations_size) + ')'
-                                                    logger.info(progressmsg)
-                                                    print(progressmsg)
-                                                    lastProgressReported = imetricprogress                                            
-                                            '''
                                             if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
-                                                msg = "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)'
-                                                print(msg)
-                                                logger.info(msg)
-                                            try:
-                                                qrname = violation['rulePattern']['name']
-                                            except KeyError:
-                                                qrname = None    
-                                            qrcritical = '<Not extracted>'
-                                            try:
-                                                qrcritical = str(violation['rulePattern']['critical'])
-                                            except KeyError:
-                                                # in earlier versions of the rest API this information was not available, taking the value from another location when possible
-                                                if tqiqm != None and tqiqm[qrid] != None and tqiqm[qrid].get("critical") != None:
-                                                    qrcritical = str(tqiqm[qrid].get("critical"))                                                    
+                                                loginfo(logger, "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
+                                            objviol = Violation()      
+                                            
                                             try:                                    
                                                 qrrulepatternhref = violation['rulePattern']['href']
                                             except KeyError:
                                                 qrrulepatternhref = None
-                                            
-                                            qrid = ''
+                                                                                            
+                                            objviol.qrid = ''
                                             qrrulepatternsplit = qrrulepatternhref.split('/')
                                             for elem in qrrulepatternsplit:
                                                 # the last element is the id
-                                                qrid = elem
+                                                objviol.qrid = elem                                            
+                                            
+                                            try:
+                                                objviol.qrname = violation['rulePattern']['name']
+                                            except KeyError:
+                                                None    
                                                 
                                             # filter on quality rule id or name, if the filter match
-                                            if qridfilter != None and not re.match(qridfilter, str(qrid)):
+                                            if qridfilter != None and not re.match(qridfilter, str(objviol.qrid)):
                                                 continue
-                                            if qrnamefilter != None and not re.match(qrnamefilter, qrname):
-                                                continue
+                                            if qrnamefilter != None and not re.match(qrnamefilter, objviol.qrname):
+                                                continue                                                
+                                                
+                                            objviol.qrcritical = '<Not extracted>'
+                                            qrdetails = tqiqm[objviol.qrid]
+                                            try:
+                                                if tqiqm != None and qrdetails != None and qrdetails.get("critical") != None:
+                                                    objviol.qrcritical = str(qrdetails.get("critical"))
+                                            except KeyError:
+                                                None
                                                 
                                             try:                                    
-                                                actionPlan = violation['remedialAction']
+                                                objviol.actionPlan = violation['remedialAction']
                                             except KeyError:
-                                                actionPlan = None
+                                                objviol.actionPlan = None
                                             # filter the violations already in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and actionPlan == None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and objviol.actionPlan == None:
                                                 continue
                                             # filter the violations not in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and actionPlan != None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and objviol.actionPlan != None:
                                                 continue
                                                 
                                             try:                                    
-                                                exclusionRequest = violation['exclusionRequest']
+                                                objviol.exclusionRequest = violation['exclusionRequest']
                                             except KeyError:
-                                                exclusionRequest = None
+                                                objviol.exclusionRequest = None
                                             # filter the violations already in the exclusion list 
-                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'Excluded' and exclusionRequest != None:
+                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'Excluded' and objviol.exclusionRequest != None:
                                                 continue
                                             # filter the violations not in the exclusion list 
-                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'NotExcluded' and exclusionRequest == None:
+                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'NotExcluded' and objviol.exclusionRequest == None:
                                                 continue
                                                 
                                             try:                                    
@@ -1248,11 +1222,11 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 componentHref = None
 
-                                            componentid = ''
+                                            objviol.componentid = ''
                                             rexcompid = "/components/([0-9]+)/snapshots/"
                                             m0 = re.search(rexcompid, componentHref)
                                             if m0: 
-                                                componentid = m0.group(1)
+                                                objviol.componentid = m0.group(1)
 
                                             # filter the components that are not in the list if a list of component href is provided
                                             if componentsfilter != None and componentHref not in componentsfilter:
@@ -1260,21 +1234,21 @@ if __name__ == '__main__':
                                                 continue
 
                                             # filter the violations that are not in the list if a list of violations id is provided
-                                            violationid = qrrulepatternhref+'#'+componentHref 
-                                            if violationsfilter != None and violationid not in violationsfilter: 
+                                            objviol.violationid = qrrulepatternhref+'#'+componentHref 
+                                            if violationsfilter != None and objviol.violationid not in violationsfilter: 
                                                 # example : DOMAIN08/rule-patterns/7778#DOMAIN08/components/137407/snapshots/21,DOMAIN08/rule-patterns/7776#DOMAIN08/components/13766/snapshots/21                                          
                                                 continue
                                                 
                                             try:
-                                                componentShortName = violation['component']['shortName']
+                                                objviol.componentShortName = violation['component']['shortName']
                                             except KeyError:
-                                                componentShortName = None                                        
+                                                objviol.componentShortName = None                                        
                                             try:
-                                                componentNameLocation = violation['component']['name']
+                                                objviol.componentNameLocation = violation['component']['name']
                                             except KeyError:
-                                                componentNameLocation = None                                        
+                                                objviol.componentNameLocation = None                                        
                                             # filter on component name location
-                                            if componentnamelocationfilter != None and not re.match(componentnamelocationfilter, componentNameLocation):
+                                            if componentnamelocationfilter != None and not re.match(componentnamelocationfilter, objviol.componentNameLocation):
                                                 continue
                                                 
                                             try:
@@ -1309,9 +1283,9 @@ if __name__ == '__main__':
                                             
                                             firsttechnicalcriterionid = ''
                                             technicalcriteriaidandnames = ''
-                                            for key in tqiqm[qrid].get("tc").keys():
+                                            for key in qrdetails.get("tc").keys():
                                                 firsttechnicalcriterionid = key
-                                                technicalcriteriaidandnames += firsttechnicalcriterionid+'#'+tqiqm[qrid].get("tc").get(key) + ','
+                                                technicalcriteriaidandnames += firsttechnicalcriterionid+'#'+qrdetails.get("tc").get(key) + ','
                                             technicalcriteriaidandnames = technicalcriteriaidandnames[:-1]
                                             
                                             ######################################################################################################################################                                           
@@ -1371,7 +1345,7 @@ if __name__ == '__main__':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
-                                                    json_findings = get_objectviolation_findings(logger, connection, warname, user, password, apikey,componentHref, qrid)
+                                                    json_findings = get_objectviolation_findings(logger, connection, warname, user, password, apikey,componentHref, objviol.qrid)
                                                 
                                                 if json_findings != None: 
                                                     fin_name = json_findings['name']
@@ -1430,7 +1404,7 @@ if __name__ == '__main__':
                                                 json_findings = None
                                                 
                                             # Do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
-                                            #if qrid == "7294":
+                                            #if objviol.qrid == "7294":
                                             #    continue
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
@@ -1469,7 +1443,7 @@ if __name__ == '__main__':
                                                                 filewithlinesnumber = ''
                                                                 srcToBeAddedToCsv = ''
                                                                 # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
-                                                                if qrid != "7294":
+                                                                if objviol.qrid != "7294":
                                                                     txtSrcCode = ''
                                                                     if srcstartline >= 0 :
                                                                         filelines = partialfiletxt.split("\n")
@@ -1485,7 +1459,7 @@ if __name__ == '__main__':
                                                                         txtSrcCode = filereference + '\n' + partialfiletxt
                                                                     srcToBeAddedToCsv = txtSrcCode 
                                                                     
-                                                                elif qrid == "7294":
+                                                                elif objviol.qrid == "7294":
                                                                     # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
                                                                     # only the file name is enough, cause it's not providing much value 
                                                                     srcToBeAddedToCsv = filereference
@@ -1513,10 +1487,10 @@ if __name__ == '__main__':
                                             msg = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
                                             #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
                                             msg +=  ";" + strtotalcritviol + ";" + strtotalviol 
-                                            msg += ";" + str(qrid)+ ";" + str(qrname) + ";" +  str(qrcritical) + ";" + str(tqiqm[qrid].get('maxWeight')) + ";" + str(tqiqm[qrid].get('compoundedWeight')) + ";" + tqiqm[qrid].get('compoundedWeightFormula') 
-                                            msg += ";" + str(tqiqm[qrid].get('failedchecks')) + ";" + str(tqiqm[qrid].get('ratio')) + ";" + str(tqiqm[qrid].get('addedViolations')) + ";" + str(tqiqm[qrid].get('removedViolations'))
+                                            msg += ";" + str(objviol.qrid)+ ";" + str(objviol.qrname) + ";" +  str(objviol.qrcritical) + ";" + str(qrdetails.get('maxWeight')) + ";" + str(qrdetails.get('compoundedWeight')) + ";" + qrdetails.get('compoundedWeightFormula') 
+                                            msg += ";" + str(qrdetails.get('failedchecks')) + ";" + str(qrdetails.get('ratio')) + ";" + str(qrdetails.get('addedViolations')) + ";" + str(qrdetails.get('removedViolations'))
 
-                                            msg += ";" + str(objViolationMetric.componentType) + ";" + str(componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
+                                            msg += ";" + str(objViolationMetric.componentType) + ";" + str(objviol.componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
                                             msg += ";" + str(technicalcriteriaidandnames)
                                             #
                                             strlistbc = ''
@@ -1525,7 +1499,7 @@ if __name__ == '__main__':
                                                 for bcid in bcids:
                                                     listtc = mapbctc.get(bcid)
                                                     for tc in listtc:
-                                                        qrlisttc = tqiqm[qrid].get('tc').keys()
+                                                        qrlisttc = qrdetails.get('tc').keys()
                                                         for tcid in qrlisttc:
                                                             if tc == tcid:
                                                                 # found 
@@ -1556,7 +1530,7 @@ if __name__ == '__main__':
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
-                                                    pri = str(comppri.get("60016").get(componentid))
+                                                    pri = str(comppri.get("60016").get(objviol.componentid))
                                             except KeyError:
                                                 None
                                             msg += pri
@@ -1565,7 +1539,7 @@ if __name__ == '__main__':
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
-                                                    pri = str(comppri.get("60014").get(componentid))
+                                                    pri = str(comppri.get("60014").get(objviol.componentid))
                                             except KeyError:
                                                 None
                                             msg += pri
@@ -1574,7 +1548,7 @@ if __name__ == '__main__':
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
-                                                    pri = str(comppri.get("60013").get(componentid))
+                                                    pri = str(comppri.get("60013").get(objviol.componentid))
                                             except KeyError:
                                                 None
                                             msg += pri         
@@ -1583,7 +1557,7 @@ if __name__ == '__main__':
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
-                                                    pri = str(comppri.get("60011").get(componentid))
+                                                    pri = str(comppri.get("60011").get(objviol.componentid))
                                             except KeyError:
                                                 None
                                             msg += pri    
@@ -1592,7 +1566,7 @@ if __name__ == '__main__':
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
-                                                    pri = str(comppri.get("60012").get(componentid))
+                                                    pri = str(comppri.get("60012").get(objviol.componentid))
                                             except KeyError:
                                                 None
                                             msg += pri
@@ -1731,10 +1705,10 @@ if __name__ == '__main__':
     
                                             #########################################################################                                  
                                             
-                                            if actionPlan != None:
-                                                actionplanstatus = actionPlan['status']
-                                                actionplantag = actionPlan['tag']
-                                                actionplancomment = actionPlan['comment']
+                                            if objviol.actionPlan != None:
+                                                actionplanstatus = objviol.actionPlan['status']
+                                                actionplantag = objviol.actionPlan['tag']
+                                                actionplancomment = objviol.actionPlan['comment']
                                                 # status
                                                 msg += ";" + actionplanstatus 
                                                 # tag
@@ -1743,8 +1717,8 @@ if __name__ == '__main__':
                                                 msg += ";" + actionplancomment
                                             else:
                                                 msg += ";;;" 
-                                            if exclusionRequest != None:
-                                                exclusionRequest = exclusionRequest['comment']
+                                            if objviol.exclusionRequest != None:
+                                                exclusionRequest = objviol.exclusionRequest['comment']
                                                 # Exclusion request exists
                                                 msg += ";true"
                                                 # Exclusion request comment
@@ -1756,12 +1730,12 @@ if __name__ == '__main__':
                                             msg += ";"+ strparams
                                             #########################################################################
                                             currentviolurl = ''
-                                            currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
-                                            currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + qrid + '/' + componentid
+                                            currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
+                                            currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
                                             currentviolurl = currentviolfullurl
                                             msg += ";" + currentviolurl
                                             msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
-                                            msg += ";"+ violationid
+                                            msg += ";"+ objviol.violationid
                                             msg += ";"+ strbookmarks
                                             # remove unicode characters that are making the reporting fails
                                             msg = remove_unicode_characters(msg)
@@ -1827,7 +1801,7 @@ if __name__ == '__main__':
                                                 }
                                                 json_new_scheduledexclusions.append(json_new_exclusion_dict)
                                                 
-                                            if createactionplans and actionPlan == None:
+                                            if createactionplans and objviol.actionPlan == None:
                                                 logger.info("Adding the violation to action plan")
                                                 
                                                 json_ap_new = {

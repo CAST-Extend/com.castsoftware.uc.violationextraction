@@ -1,13 +1,16 @@
 @echo off
-
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 REM configure python path if not defined
-REM min version to use is Python 3.4
-SET AIP_DEFAULT_BIN_DIR=C:\Program Files\CAST\8.3
-SET PYTHON_PATH_IF_NOT_DEF_IN_ENV=PYTHONPATH=%AIP_DEFAULT_BIN_DIR%\ThirdParty\Python34
+REM min version to use is Python 3.6
+SET PYTHON_PATH_IF_NOT_DEF_IN_ENV=C:\Python\Python37
 IF "%PYTHONPATH%"=="" SET PYTHONPATH=%PYTHON_PATH_IF_NOT_DEF_IN_ENV%
 "%PYTHONPATH%\python" -V
-
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+REM install the additional python lib required
+"%PYTHONPATH%\Scripts\pip" install pandas
+"%PYTHONPATH%\Scripts\pip" install requests 
+"%PYTHONPATH%\Scripts\pip" install xlsxwriter
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Rest API URL  : http|https://host(:port)(/EngineeringWarName) or http|https://host(:port)(/CAST-RESTAPIWarName) 
 SET RESTAPIURL=https://demo-eu.castsoftware.com/Engineering
@@ -156,10 +159,10 @@ SET CMD_COMMENT=
 ::SET CMD_COMMENT=-comment "%COMMENT%"
 
 
-:: Generate a csv of detail : true|false, default = false 
-SET CSVFILE=true
-SET CMD_CSVFILE=
-SET CMD_CSVFILE=-csvfile "%CSVFILE%"
+:: Outputextension : csv|xlsx, default = csv
+::SET OUTPUTEXTENSION=csv
+SET CMD_OUTPUTEXTENSION=
+::SET CMD_OUTPUTEXTENSION=-outputextension "%OUTPUTEXTENSION%"
 
 :: Max nbRows for the Rest API calls
 ::SET NBROWS=100000000
@@ -173,7 +176,7 @@ SET CMD_DISPLAYSOURCE=
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 ECHO Running the command line 
-SET CMD="%PYTHONPATH%\python" "%~dp0violation_extraction.py" %CMD_RESTAPIURL% %CMD_EDURL% %CMD_USER% %CMD_PASSWORD% %CMD_APIKEY% %CMD_LOGFILE% %CMD_OUTPUTFOLDER% %CMD_APPFILTER% %CMD_QRIDFILTER% %CMD_QRNAMEFILTER% %CMD_COMPONLOCATIONFILTER% %CMD_ACTIONPLANFILTER% %CMD_EXCLUREQUESTFILTER% %CMD_CRITICALONLYFILTER% %CMD_VIOLATIONSTATUSFILTER% %CMD_COMPONSTATUSFILTER% %CMD_BCFILTER% %CMD_PRIMINVALUEFILTER% %CMD_TECHNOFILTER% %CMD_COMPONENTSFILTER% %CMD_VIOLATIONSFILTER% %CMD_CREATEEXCLUSIONS% %CMD_CREATEACTIONPLANS% %CMD_ACTIONPLANINPUTTAG% %CMD_COMMENT% %CMD_DETAILLEVEL% %CMD_CSVFILE% %CMD_NBROWS% %CMD_DISPLAYSOURCE%
+SET CMD="%PYTHONPATH%\python" "%~dp0violation_extraction.py" %CMD_RESTAPIURL% %CMD_EDURL% %CMD_USER% %CMD_PASSWORD% %CMD_APIKEY% %CMD_LOGFILE% %CMD_OUTPUTFOLDER% %CMD_APPFILTER% %CMD_QRIDFILTER% %CMD_QRNAMEFILTER% %CMD_COMPONLOCATIONFILTER% %CMD_ACTIONPLANFILTER% %CMD_EXCLUREQUESTFILTER% %CMD_CRITICALONLYFILTER% %CMD_VIOLATIONSTATUSFILTER% %CMD_COMPONSTATUSFILTER% %CMD_BCFILTER% %CMD_PRIMINVALUEFILTER% %CMD_TECHNOFILTER% %CMD_COMPONENTSFILTER% %CMD_VIOLATIONSFILTER% %CMD_CREATEEXCLUSIONS% %CMD_CREATEACTIONPLANS% %CMD_ACTIONPLANINPUTTAG% %CMD_COMMENT% %CMD_DETAILLEVEL% %CMD_CSVFILE% %CMD_NBROWS% %CMD_DISPLAYSOURCE% %CMD_OUTPUTEXTENSION%
 ECHO %CMD%
 %CMD%
 SET RETURNCODE=%ERRORLEVEL%

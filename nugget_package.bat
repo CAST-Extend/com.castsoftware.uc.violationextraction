@@ -5,6 +5,6 @@ set EnableNugetPackageRestore=true
 SET CMD="%nuggetexe%"
 ECHO %CMD%
 %CMD%
-SET CMD="%nuggetexe%" pack plugin.nuspec -ExcludeEmptyDirectories -version %version%
+SET CMD="%nuggetexe%" pack plugin.nuspec -ExcludeEmptyDirectories
 ECHO %CMD%
 %CMD%

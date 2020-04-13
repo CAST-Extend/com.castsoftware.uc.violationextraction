@@ -1,16 +1,19 @@
 import json
-from http.client import HTTPSConnection
-from http.client import HTTPConnection
-from base64 import b64encode
 import argparse
 import logging
 import logging.handlers
 import re
 import sys
-import csv
 import traceback
-import os
 import time
+import csv
+import xml.etree.ElementTree as ET
+
+import pandas as pd
+from io import StringIO
+import xlsxwriter
+from utils.utils import open_connection, close_connection
+from utils.utils import AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils
 
 '''
  Author : MMR
@@ -18,7 +21,6 @@ import time
 '''
 #Security,Efficiency,Robustness,Transferability,Changeability
 bcids = ["60016","60014","60013","60012","60011"]
-setcookie = None
 
 ########################################################################
 
@@ -40,555 +42,12 @@ class Violation:
     violationstatus = None
     componentstatus = None
 
-########################################################################
-
-class ObjectViolationMetric:
-    componentType = '<Not extracted>'
-    criticalViolations = '<Not extracted>'
-    cyclomaticComplexity = '<Not extracted>'
-    codeLines = '<Not extracted>'
-    commentLines = '<Not extracted>'
-    ratioCommentLinesCodeLines = '<Not extracted>'
-    commentedCodeLines = None
-    fanIn = None
-    fanOut = None
-    halsteadProgramLength = None
-    halsteadProgramVocabulary = None
-    halsteadVolume = None
-    distinctOperators = None
-    distinctOperands = None
-    integrationComplexity = None
-    criticalViolations = None
-
-########################################################################
-
-class RulePatternDetails:
-    def __init__(self):
-        self.associatedValueName = ''
-        self.listQualityStandard = []
-
-    def get_quality_standards(self):
-        strqualitystandards = ''
-        #print(len(self.listQualityStandard))
-        for qs in self.listQualityStandard:
-            strqualitystandards += qs + ","
-        if strqualitystandards != '': strqualitystandards = strqualitystandards[:-1]
-        return strqualitystandards
-
-########################################################################
-def loginfo(logger, msg, tosysout = False):
-    logger.info(msg)
-    if tosysout:
-        print(msg)
-
-########################################################################
-def logwarning(logger, msg, tosysout = False):
-    logger.warning(msg)
-    if tosysout:
-        print("#### " + msg)
-
-########################################################################
-def logerror(logger, msg, tosysout = False):
-    logger.error(msg)
-    if tosysout:
-        print("#### " + msg)
-
-########################################################################
-
-########################################################################
-# retrieve the connection depending on 
-def open_connection(logger,host,protocol):
-    connection = None
-    global setcookie
-    setcookie = None
-    logger.info('Opening connection to ' + protocol  + '://' + host)
-    if re.search('[hH][tT][tT][pP][sS]',protocol):
-        connection = HTTPSConnection(host)
-    elif re.search('[hH][tT][tT][pP]',protocol):
-        connection = HTTPConnection(host)
-    return connection
-
-########################################################################
-# retrieve the connection depending on 
-def close_connection(logger,connection):
-    logger.info('Closing connection')
-    if connection == None:
-        return
-    else:
-        connection.close()
-    global setcookie
-    setcookie = None
-
-########################################################################
-
-def execute_request(logger, connection, requesttype, request, warname, user, password, apikey, inputjson, contenttype='application/json'):
-    global setcookie
-    
-    request_headers = {}
-    json_data = None
-
-    request_text = "/"
-    if warname != None:
-        request_text +=  warname +"/"
-    request_text += "rest/" + request
-    logger.debug('Sending ' + requesttype + ' ' + request_text + ' with contenttype=' + contenttype)   
-
-    # if the user and password are provided, we take them first
-    if user != None and password != None and user != 'N/A' and user != 'N/A':
-        #we need to base 64 encode it 
-        #and then decode it to acsii as python 3 stores it as a byte string
-        #userAndPass = b64encode(user_password).decode("ascii")
-        auth = str.encode("%s:%s" % (user, password))
-        #user_and_pass = b64encode(auth).decode("ascii")
-        user_and_pass = b64encode(auth).decode("iso-8859-1")
-        request_headers.update({'Authorization':'Basic %s' %  user_and_pass})
-    # else if the api key is provided
-    elif apikey != None and apikey != 'N/A':
-        #print (apikey)
-        # API key configured in the WAR
-        request_headers.update({'X-API-KEY:':apikey})
-        # we are provide a user name hardcoded' 
-        request_headers.update({'X-API-USER:':'admin_apikey'})
-        
-    # Name of the client added in the header (for the audit trail)
-    request_headers.update({'X-Client':'com.castsoftware.uc.violationextraction'})
-    
-    # GET request
-    if requesttype == 'GET':
-        request_headers.update({'accept' : contenttype})
-    # POST/PUT/DELETE request, we are provining a json file
-    else:
-        request_headers.update({'Content-type' : contenttype})
-        json_data = json.dumps(inputjson)
-    
-    # if the session JSESSIONID is already defined we inject the cookie to reuse previous session
-    if setcookie != None:
-        request_headers.update({'Set-Cookie':setcookie})
-
-    # sent the request
-    connection.request(requesttype, request_text, json_data, headers=request_headers)        
-     
-    #get the response back
-    response = connection.getresponse()
-    #logger.debug('     response status ' + str(response.status) + ' ' + str(response.reason))    
-    
-    # Error 
-    if  response.status != 200:
-        logerror(logger,'HTTPS request failed ' + str(response.status) + ' ' + str(response.reason) + ':' + request_text,True)
-        return None
-    
-    # look for the Set-Cookie in response headers, to inject it for future requests
-    if setcookie == None: 
-        for h1 in response.headers._headers:
-            if h1 != None and h1[0] == 'Set-Cookie':
-                setcookie = h1[1]
-                break
-    
-    #send back the date
-    encoding = response.info().get_content_charset('iso-8859-1')
-    responseread_decoded = response.read().decode(encoding)
-    
-    if contenttype=='application/json':
-        output = json.loads(responseread_decoded)
-    else:
-        output = responseread_decoded
-    
-    return output
-
-########################################################################
-def get_server(logger, connection, warname, user, password, apikey):
-    request = "server"
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-def get_domains(logger, connection, warname, user, password, apikey):
-    request = ""
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_applications(logger, connection, warname, user, password, apikey, domain):
-    request = domain + "/applications"
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_transactions_per_business_criterion(logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, bcid, nbrows):
-    logger.info("Extracting the transactions for business criterion " + bcid)
-    request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + "/transactions/" + bcid
-    request += '?startRow=1'
-    request += '&nbRows=' + str(nbrows)    
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_application_snapshots(logger, connection, warname, user, password, apikey, domain, applicationid):
-    request = domain + "/applications/" + applicationid + "/snapshots" 
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_total_number_violations(logger, connection, warname, user, password, apikey, domain, applicationid,snapshotid):
-    logger.info("Extracting the number of violations")
-    request = domain + "/results?sizing-measures=67011,67211&application=" + applicationid + "&snapshot=" + snapshotid
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_qualityrules_results(logger, connection, warname, user, password, apikey, domain, applicationid, criticalonly, nbrows):
-    logger.info("Extracting the quality rules details")
-    request = domain + "/applications/" + applicationid + "/results?quality-indicators"
-    request += '=(cc:60017'
-    if criticalonly == None or not criticalonly:   
-        request += ',nc:60017'
-    request += ')&select=(evolutionSummary,violationRatio)'
-    # last snapshot only
-    request += '&snapshots=-1'
-    request += '&startRow=1'
-    request += '&nbRows=' + str(nbrows)
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_snapshot_violations(logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, criticalonly, violationStatus, businesscriterionfilter, technoFilter, nbrows):
-    logger.info("Extracting the snapshot violations")
-    request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/violations'
-    request += '?startRow=1'
-    request += '&nbRows=' + str(nbrows)
-    if criticalonly != None and criticalonly:         
-        request += '&rule-pattern=critical-rules'
-    if violationStatus != None:
-        request += '&status=' + violationStatus
-    if businesscriterionfilter == None:
-        businesscriterionfilter = "60017"
-    if businesscriterionfilter != None:
-        strbusinesscriterionfilter = str(businesscriterionfilter)        
-        # we can have multiple value separated with a comma
-        if ',' not in strbusinesscriterionfilter:
-            request += '&business-criterion=' + strbusinesscriterionfilter
-        request += '&rule-pattern=('
-        for item in strbusinesscriterionfilter.split(sep=','):
-            request += 'cc:' + item + ','
-            if criticalonly == None or not criticalonly:   
-                request += 'nc:' + item + ','
-        request = request[:-1]
-        request += ')'
-        
-    if technoFilter != None:
-        request += '&technologies=' + technoFilter
-        
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_tqi_transactions_violations(logger, connection, warname, user, password, apikey, domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows):    
-    request = domain + "/transactions/" + transactionid + "/snapshots/" + snapshotid + '/violations'
-    request += '?startRow=1'
-    request += '&nbRows=' + str(nbrows)
-    if criticalonly != None and criticalonly:         
-        request += '&rule-pattern=critical-rules'
-    if violationStatus != None:
-        request += '&status=' + violationStatus
-    
-    businesscriterionfilter = "60017"
-    if businesscriterionfilter != None:
-        strbusinesscriterionfilter = str(businesscriterionfilter)        
-        # we can have multiple value separated with a comma
-        if ',' not in strbusinesscriterionfilter:
-            request += '&business-criterion=' + strbusinesscriterionfilter
-        request += '&rule-pattern=('
-        for item in strbusinesscriterionfilter.split(sep=','):
-            request += 'cc:' + item + ','
-            if criticalonly == None or not criticalonly:   
-                request += 'nc:' + item + ','
-        request = request[:-1]
-        request += ')'
-        
-    if technoFilter != None:
-        request += '&technologies=' + technoFilter
-        
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-
-########################################################################
-def create_scheduledexclusions(logger, connection, warname, user, password, apikey, uriapplication, json):
-    request = uriapplication + '/exclusions/requests'
-    return execute_request(logger, connection, 'POST', request, warname, user, password, apikey, json)
-
-########################################################################
-def create_actionplans(logger, connection, warname, user, password, apikey, uriapplication, json):
-    request = uriapplication + '/action-plan/issues'
-    return execute_request(logger, connection, 'POST', request, warname, user, password, apikey, json)
-
-########################################################################
-
-def get_objectviolation_metrics(logger, connection, warname, user, password, apikey, objHref):
-    logger.debug("Extracting the component metrics")    
-    request = objHref
-    json_component = execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-    obj = None
-    if json_component != None:
-        obj = ObjectViolationMetric()
-        try:
-            obj.componentType = json_component['type']['label']
-        except KeyError:
-            None                              
-        try:
-            obj.codeLines = json_component['codeLines']
-            if obj.codeLines == None :  obj.codeLines = 0
-        except KeyError:
-            obj.codeLines = 0
-        try:
-            obj.commentedCodeLines = json_component['commentedCodeLines']
-            if obj.commentedCodeLines == None :  obj.commentedCodeLines = 0
-        except KeyError:
-            obj.commentedCodeLines = 0                                          
-        try:
-            obj.commentLines = json_component['commentLines']
-            if obj.commentLines == None :  obj.commentLines = 0
-        except KeyError:
-            obj.commentLines = 0
-              
-        try:
-            obj.fanIn = json_component['fanIn']
-        except KeyError:
-            obj.fanIn = 0
-        try:
-            obj.fanOut = json_component['fanOut']
-        except KeyError:
-            obj.fanOut = 0 
-        try:
-            obj.cyclomaticComplexity = json_component['cyclomaticComplexity']
-        except KeyError:
-            obj.cyclomaticComplexity ='Not available'   
-        #Incorrect ratio, recomputing manually
-        #try:
-        #    obj.ratioCommentLinesCodeLines = json_component['ratioCommentLinesCodeLines']
-        #except KeyError:
-        #    obj.ratioCommentLinesCodeLines = None
-
-        obj.ratioCommentLinesCodeLines = None
-        if obj.codeLines != None and obj.commentLines != None and obj.codeLines != 'Not available' and obj.commentLines != 'Not available' and (obj.codeLines + obj.commentLines != 0) :
-            obj.ratioCommentLinesCodeLines = obj.commentLines / (obj.codeLines + obj.commentLines) 
-        else:
-            obj.ratioCommentLinesCodeLines = 0
-        try:
-            obj.halsteadProgramLength = json_component['halsteadProgramLength']
-        except KeyError:
-            obj.halsteadProgramLength = 0
-        try:
-            obj.halsteadProgramVocabulary = json_component['halsteadProgramVocabulary']
-        except KeyError:
-            obj.halsteadProgramVocabulary = 0
-        try:
-            obj.halsteadVolume = json_component['halsteadVolume']
-        except KeyError:
-            obj.halsteadVolume = 0 
-        try:
-            obj.distinctOperators = json_component['distinctOperators']
-        except KeyError:
-            obj.distinctOperators = 0 
-        try:
-            obj.distinctOperands = json_component['distinctOperands']
-        except KeyError:
-            obj.distinctOperands = 0                                             
-        try:
-            obj.integrationComplexity = json_component['integrationComplexity']
-        except KeyError:
-            obj.integrationComplexity = 0
-        try:
-            obj.criticalViolations = json_component['criticalViolations']
-        except KeyError:
-            obj.criticalViolations = 'Not available'
-
-    return obj
-    
-
-########################################################################
-
-def get_objectviolation_findings(logger, connection, warname, user, password, apikey, objHref, qrid):
-    logger.debug("Extracting the component findings")    
-    request = objHref + '/findings/' + qrid 
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_rule_pattern(logger, connection, warname, user, password, apikey, rulepatternHref):
-    logger.debug("Extracting the rule pattern details")   
-    request = rulepatternHref
-    json_rulepattern = execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-    obj = None
-    if json_rulepattern != None:
-        obj = RulePatternDetails()    
-        try:
-            obj.associatedValueName = json_rulepattern['associatedValueName']
-        except KeyError:
-            None
-        try:
-            qslist = json_rulepattern['qualityStandards']
-            for qs in qslist:
-                obj.listQualityStandard.append(qs['standard']+"/"+qs['id'])
-        except KeyError:
-            None
-    return obj 
-
-########################################################################
-
-def get_snapshot_tqi_quality_model (logger, connection, warname, user, password, apikey, domain, snapshotid):
-    logger.info("Extracting the snapshot quality model")   
-    request = domain + "/quality-indicators/60017/snapshots/" + snapshotid + "/base-quality-indicators" 
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
-
-def get_snapshot_bc_tc_mapping(logger, connection, warname, user, password, apikey, domain, snapshotid, bcid):
-    logger.info("Extracting the snapshot business criterion " + bcid +  " => technical criteria mapping")  
-    request = domain + "/quality-indicators/" + str(bcid) + "/snapshots/" + snapshotid
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-
-########################################################################
- 
-def get_components_pri (logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, bcid,nbrows):
-    logger.info("Extracting the components PRI for business criterion " + bcid)  
-    request = domain + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + '/components/' + str(bcid)
-    request += '?startRow=1'
-    request += '&nbRows=' + str(nbrows)
-    return execute_request(logger, connection, 'GET', request, warname, user, password, apikey, None)
-     
-########################################################################
-     
-def get_sourcecode(logger, connection, sourceCodesHref, warname, user, password, apikey):
-    return execute_request(logger, connection, 'GET', sourceCodesHref, warname, user, password, apikey, None)     
-
-########################################################################
-
-def get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey):
-    strstartendlineparams = ''
-    if srcstartline != None and srcstartline >= 0 and srcendline != None and srcendline >= 0:
-        strstartendlineparams = '?start-line='+str(srcstartline)+'&end-line='+str(srcendline)
-    return execute_request(logger, connection, 'GET', filehref+strstartendlineparams, warname, user, password, apikey, None,'text/plain')    
-     
-########################################################################
-# extract the transactions TRI & violations component list per business criteria
-def init_transactions (logger, connection, warname, usr, pwd, apikey,domain, applicationid, snapshotid, criticalonly, violationStatus, technoFilter,nbrows):
-    #Security,Efficiency,Robustness,TQI
-    bcids = ["60017","60016","60014","60013"]
-    transaclist = {}
-    for bcid in bcids: 
-        json_transactions = get_transactions_per_business_criterion(logger, connection, warname, usr, pwd, apikey,domain, applicationid, snapshotid, bcid, nbrows)
-        if json_transactions != None:
-            transaclist[bcid] = []
-            icount = 0
-            for trans in json_transactions:
-                icount += 1
-                tri = None
-                shortname = 'Undefined'
-                name = 'Undefined'
-                transactionHref = 'Undefined'
-                transactionid = -1 
-                
-                try:
-                    name =  trans['name']
-                except KeyError:
-                    None  
-                try:
-                    tri =  trans['transactionRiskIndex']
-                except KeyError:
-                    None
-                try:
-                    transactionHref =  trans['href']
-                except KeyError:
-                    None
-                rexuri = "/transactions/([0-9]+)/"
-                m0 = re.search(rexuri, transactionHref)
-                if m0: transactionid = m0.group(1)
-                try:
-                    shortName =  trans['shortName']
-                except KeyError:
-                    None 
-                    
-                mytransac = {
-                    "name":name,
-                    "shortName":shortName,
-                    "href":transactionHref,
-                    "business criteria id":bcid,
-                    "transactionRiskIndex":tri,
-                    "componentsWithViolations":[]
-                }
-                
-                # for TQI only we retrieve the list of components in violations on that transaction
-                # for the other we need only the transaction TRI
-                json_tran_violations = None
-                # look for the transaction violation only for the TQI, for the other HF take the violation already extracted for the TQI  
-                if bcid == "60017":
-                    logger.info("Extracting the violations for transaction " + transactionid + ' (' + str(icount) + '/' + str(len(json_transactions)) + ')')
-                    json_tran_violations = get_tqi_transactions_violations(logger, connection, warname, usr, pwd, apikey,domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows)                  
-                    if json_tran_violations != None:
-                        for tran_viol in json_tran_violations:
-                            mytransac.get("componentsWithViolations").append(tran_viol['component']['href'])
-                            #print(shortName + "=>" + tran_viol['component']['href'])
-                else:
-                    if transaclist["60017"] != None:
-                        for t in transaclist["60017"]:
-                            if mytransac['href'] == t['href']:
-                                mytransac.update({"componentsWithViolations":t.get("componentsWithViolations")})
-                                break
-                transaclist[bcid].append(mytransac)
-    return transaclist
-
-########################################################################
-
- 
-def initialize_components_pri (logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid,bcids,nbrows):
-    comppridict = {}
-    for bcid in bcids:
-        comppridict.update({bcid:{}})
-        json_snapshot_components_pri = get_components_pri(logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, bcid,nbrows)
-        if json_snapshot_components_pri != None:
-            for val in json_snapshot_components_pri:
-                compid = None
-                try:
-                    treenodehref = val['treeNodes']['href']
-                except KeyError:
-                    logger.error('KeyError treenodehref ' + str(val))
-                if treenodehref != None:
-                    rexuri = "/components/([0-9]+)/"
-                    m0 = re.search(rexuri, treenodehref)
-                    if m0: compid = m0.group(1)
-                    pri = val['propagationRiskIndex']                                                 
-                    if treenodehref != None and pri != None: comppridict.get(bcid).update({compid:pri}) 
-        json_snapshot_components_pri = None
-    return comppridict
-
-
-########################################################################
- 
-def initialize_bc_tch_mapping(logger, connection, warname, user, password, apikey, domain, applicationid, snapshotid, bcids):
-    outputtcids = {}
-    for bcid in bcids:
-        outputtcid = []
-        json = get_snapshot_bc_tc_mapping(logger, connection, warname, user, password, apikey, domain, snapshotid, bcid)
-        if json != None:
-            if json != None:
-                for val in json['gradeContributors']:
-                    outputtcid.append(val['key'])
-        outputtcids.update({bcid:outputtcid}) 
-        json = None
-    return outputtcids
-
-########################################################################
-# workaround to remove the unicode characters before sending them to the CSV file
-# and avoid the below error
-#UnicodeEncodeError: 'charmap' codec can't encode character '\x82' in position 105: character maps to <undefined>    
-
-def remove_unicode_characters(astr):
-    return astr.encode('ascii', 'ignore').decode("utf-8")
  
 ########################################################################
 
 def init_parse_argument():
     # get arguments
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(add_help=True)
     requiredNamed = parser.add_argument_group('Required named arguments')
     requiredNamed.add_argument('-restapiurl', required=True, dest='restapiurl', help='Rest API URL using format https://demo-eu.castsoftware.com/CAST-RESTAPI or http://demo-eu.castsoftware.com/Engineering')
     requiredNamed.add_argument('-edurl', required=False, dest='edurl', help='Engineering dashboard URL using format http://demo-eu.castsoftware.com/Engineering, if empty will be same as restapiurl')    
@@ -620,66 +79,63 @@ def init_parse_argument():
     requiredNamed.add_argument('-comment', required=False, dest='comment', help='Exclusion/Action plan comment')
     
     requiredNamed.add_argument('-detaillevel', required=False, dest='detaillevel', help='Report detail level (Simple|Intermediate|Full) default = Intermediate')
-    requiredNamed.add_argument('-csvfile', required=False, dest='csvfile', help='Generate CSV file (true|false) default = false')
+    requiredNamed.add_argument('-outputextension', required=False, dest='outputextension', help='Output file (xlsx|csv) default = csv')
     requiredNamed.add_argument('-loglevel', required=False, dest='loglevel', help='Log level (INFO|DEBUG) default = INFO')
     requiredNamed.add_argument('-nbrows', required=False, dest='nbrows', help='max number of rows extracted from the rest API, default = 1000000000')
     
     return parser
 ########################################################################
 
-def generate_csvfile(logger, data, filepath):
+def generate_output_file(logger, outputextension, data, filepath):
     if data != None:
-        '''with open(filepath, mode='w', newline='') as csv_file:
-            csv_writer = csv.writer(csv_file, delimiter=';')
-            # write in csv file
-            csv_writer.writerows(data)
+        '''if outputextension == 'csv':
+                # Not working, using below basic preocessing instead 
+                #with open(filepath, mode='w', newline='') as csv_file:
+                #csv_writer = csv.writer(csv_file, delimiter=';')
+                # write in csv file
+                #csv_writer.writerows(data)
+            file = open(filepath, 'w')
+            for line in data:
+                #linesplited = line.split(';')
+                #msg = 'writing line ' + line#linesplited[0] 
+                #logger.debug(msg)
+                file.write(line + '\n')
+        elif outputextension == 'xlsx':
+            #df_data = pd.read_csv(StringIO(remove_unicode_characters(str_readme_content)), sep=";",engine='python',quoting=csv.QUOTE_NONE)
+            None
         '''
-        file = open(filepath, 'w')
-        for line in data:
-            #linesplited = line.split(';')
-            #msg = 'writing line ' + line#linesplited[0] 
-            #logger.debug(msg)
-            file.write(line + '\n') 
-        loginfo(logger,'File ' + filepath + ' generated with ' + str(len(data)) + ' lines',True)
-
+        if outputextension == 'csv':
+            file = open(filepath, 'w')
+            file.write(data)            
+        elif outputextension == 'xlsx':
+            try: 
+                df_data = pd.read_csv(StringIO(data), sep=";",engine='python',quoting=csv.QUOTE_NONE)
+            except: 
+                LogUtils.logerror(logger,'csv.Error: unexpected end of data : readme',True)            
+            file = open(filepath, 'w')
+            with pd.ExcelWriter(filepath,engine='xlsxwriter') as writer:
+                df_data.to_excel(writer, sheet_name='Violations', index=False)
+                workbook = writer.book
+                worksheet = writer.sheets['Violations']
+                header_format = workbook.add_format({'bold': True,'text_wrap': True,'valign': 'middle','fg_color': '#D7E4BC','border': 1}) 
+                worksheet.set_zoom(70)
+                #TODO: ajust size autofilter
+                worksheet.autofilter('BH1:BH10000')
+                # Write the column headers with the defined format.
+                for col_num, value in enumerate(df_data.columns.values):
+                    worksheet.write(0, col_num, value, header_format)        
+        
+        LogUtils.loginfo(logger,'File ' + filepath + ' generated',True)
+        
 ########################################################################
 
-def get_csvfilepath(outputfolder, appName):
+def get_filepath(outputfolder, appName, outputextension, ):
     fpath = ''
     if outputfolder != None:
         fpath = outputfolder + '/'
-    fpath += appName + "_violations.csv"
+    fpath += appName + "_violations." + outputextension
     return fpath 
 
-########################################################################
-
-def is_locked(filepath):
-    """Checks if a file is locked by opening it in append mode.
-    If no exception thrown, then the file is not locked.
-    """
-    locked = None
-    file_object = None
-    if os.path.exists(filepath):
-        try:
-            #print ("Trying to open %s." % filepath)
-            buffer_size = 8
-            # Opening file in append mode and read the first 8 characters.
-            file_object = open(filepath, 'a', buffer_size)
-            if file_object:
-                #print ("%s is not locked." % filepath)
-                locked = False
-        
-        except IOError:
-            e = sys.exc_info()[0]
-            #print ("File is locked (unable to open in append mode). %s." % e)
-            locked = True
-        finally:
-            if file_object:
-                file_object.close()
-                #print ("%s closed." % filepath)
-    #else:
-    #    print "%s not found." % filepath
-    return locked
 
 ########################################################################
 if __name__ == '__main__':
@@ -708,7 +164,17 @@ if __name__ == '__main__':
     outputfolder = args.outputfolder 
 
     # Version
-    script_version = "1.0.6"
+    
+    script_version = "1.0.7"
+    '''script_version = "Unknown"
+    try:
+        root = ET.parse('plugin.nuspec').getroot()
+        for tagversion in root.findall('metadata'):
+            script_version = tagversion.text
+            None
+    except:
+        logwarning(logger,'Not able to read the extension version in plugin.nuspec',True)
+    ''' 
 
     # new params
     applicationfilter = args.applicationfilter
@@ -751,9 +217,10 @@ if __name__ == '__main__':
     detaillevel = 'Intermediate'
     if args.detaillevel != None and (args.detaillevel == 'Simple' or args.detaillevel == 'Intermediate' or args.detaillevel == 'Full'):
         detaillevel = args.detaillevel
-    csvfile = False
-    if args.csvfile != None and (args.csvfile == 'True' or args.csvfile == 'true'):
-        csvfile = True
+    
+    outputextension = 'csv'
+    if args.outputextension != None:
+        outputextension = args.outputextension 
     nbrows = 1000000000
     if args.nbrows != None and type(nbrows) == int: 
         nbrows=args.nbrows
@@ -824,29 +291,23 @@ if __name__ == '__main__':
         logger.setLevel(logging.INFO)
 
     try:
-        rootapiurl = 'Undefined'
-        rootedurl = 'Undefined'
-        protocol = 'Undefined'
-        host = 'Undefined'
-        warname = 'Undefined'
-        
         currentviolurl = ''
         qrrulepatternhref = ''
         componentHref = ''
         currentviolpartialurl = ''
         currentviolfullurl = ''
+        protocol = 'Undefined'
+        host = 'Undefined'
+        warname = 'Undefined'
+        rootedurl = 'Undefined'
         
-        # Processing for the REST API URL 
+        # split the URL to extract the warname, host, protocol ... 
         rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
         m0 = re.search(rexURL, restapiurl)
         if m0:
-            rootapiurl = m0.group(1)
             protocol = m0.group(2)
             host = m0.group(3)
             warname = m0.group(5)
-        else:
-            logger.error('Malformed restapiurl value, abording : ' + restapiurl)
-            sys.exit(-1)
   
         # Processing for the Engineering dashboard URL 
         rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
@@ -871,7 +332,7 @@ if __name__ == '__main__':
         logger.info('usr='+str(user))
         logger.info('pwd=*******')
         logger.info('apikey='+str(apikey))
-        logger.info('log file='+log)
+        LogUtils.loginfo(logger,'log file='+log,True)
         logger.info('log level='+loglevel)
         logger.info('applicationfilter='+str(applicationfilter))
         logger.info('qridfilter='+str(qridfilter))
@@ -892,7 +353,7 @@ if __name__ == '__main__':
         logger.info('technofilter='+str(technofilter))
         logger.info('detaillevel='+str(detaillevel))
         logger.info('nbrows='+str(nbrows))
-        logger.info('csvfile='+str(csvfile))
+        logger.info('outputextension='+str(outputextension))
         logger.info('displaysource='+str(displaysource))
         logger.info('output folder='+str(outputfolder))
         logger.info('bload_all_data='+str(bload_all_data))
@@ -906,14 +367,14 @@ if __name__ == '__main__':
         logger.info('bload_quality_model='+str(bload_quality_model))
         
         logger.info('********************************************')    
-        connection = open_connection(logger, host, protocol)   
-        loginfo(logger,'Initialization',True)
+        connection = open_connection(logger, restapiurl, user, password)     
+        LogUtils.loginfo(logger,'Initialization',True)
         # few checks on the server
         json_server = None
         if not bload_serverdetail:
             logger.debug("NOT loading the server detail")
         else: 
-            json_server = get_server(logger, connection, warname, user, password, apikey)
+            json_server = AIPRestAPI.get_server(logger, restapiurl, user, password, apikey)
         
         if json_server != None:
             logger.info('server status=' + json_server['status'])    
@@ -926,7 +387,7 @@ if __name__ == '__main__':
             logger.info('********************************************')    
         
         # retrieve the domains & the applications in those domains 
-        json_domains = get_domains(logger, connection, warname, user, password, apikey)
+        json_domains = AIPRestAPI.get_domains(logger, restapiurl, user, password, apikey)
         if json_domains != None:
             idomain = 0
             for item in json_domains:
@@ -937,10 +398,10 @@ if __name__ == '__main__':
                 except KeyError:
                     pass
                 
-                loginfo(logger,"Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains)),True)
+                LogUtils.loginfo(logger,"Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains)),True)
                 # only engineering domains
                 if domain != 'AAD':  #and domain == 'AED_AYYILDIZ':
-                    json_apps = get_applications(logger, connection, warname, user, password, apikey,domain)
+                    json_apps = AIPRestAPI.get_applications(logger, restapiurl, user, password, apikey,domain)
                     applicationid = -1
                     appHref = ''
                     appName = ''
@@ -963,26 +424,27 @@ if __name__ == '__main__':
                             logger.info('Skipping application : ' + appName)
                             continue                
                         elif applicationfilter == None or re.match(applicationfilter, appName):
-                            loginfo(logger,"Processing application " + appName,True)
+                            LogUtils.loginfo(logger,"Processing application " + appName,True)
                             csvdatas = [] 
-                            if csvfile != None and csvfile:
-                                # testing if csv file can be written
-                                fpath = get_csvfilepath(outputfolder, appName)
+                            if outputextension != None and outputextension:
+                                # testing if output file can be written
+                                fpath = get_filepath(outputfolder, appName, outputextension)
                                 filelocked = False
                                 icount = 0
-                                while icount < 10 and is_locked(fpath):
+                                while icount < 10 and FileUtils.is_file_locked(fpath):
                                     icount += 1
                                     filelocked = True
-                                    logwarning(logger,'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (fpath, str(icount)),True)
+                                    LogUtils.logwarning(logger,'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (fpath, str(icount)),True)
                                     time.sleep(5)
-                                if is_locked(fpath):
-                                    logerror(logger,'File %s is locked, aborting for application %s' % (fpath,appName),True)
+                                if FileUtils.is_file_locked(fpath):
+                                    LogUtils.logerror(logger,'File %s is locked, aborting for application %s' % (fpath,appName),True)
                                     continue
                             # snapshot list
-                            json_snapshots = get_application_snapshots(logger, connection,warname, user, password, apikey,domain, applicationid)
+                            json_snapshots = AIPRestAPI.get_application_snapshots(logger, restapiurl, user, password, apikey,domain, applicationid)
                             if json_snapshots != None:
                                 for snap in json_snapshots:
                                     csvdata = []
+                                    outputdata = ''
                                     snapHref = ''
                                     snapshotid = -1
                                     try:
@@ -1000,8 +462,8 @@ if __name__ == '__main__':
 
 
                                     # Number of violations / snapshots
-                                    loginfo(logger,'Initialization (step 1/5)',True)
-                                    json_tot_violations = get_total_number_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid)
+                                    LogUtils.loginfo(logger,'Initialization (step 1/5)',True)
+                                    json_tot_violations = AIPRestAPI.get_total_number_violations(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid)
                                     intotalviol = -1
                                     intotalcritviol = -1
                                     if (json_tot_violations != None):
@@ -1017,11 +479,11 @@ if __name__ == '__main__':
                                     # retrieve the mapping quality url id => technical criterion id
                                     tqiqm = {}
                                     json_snapshot_quality_model = None
-                                    loginfo(logger,'Initialization (step 2/5)',True)
+                                    LogUtils.loginfo(logger,'Initialization (step 2/5)',True)
                                     if not bload_quality_model:
                                         logger.info("NOT Extracting the snapshot quality model")                                           
                                     else:
-                                        json_snapshot_quality_model = get_snapshot_tqi_quality_model(logger, connection, warname, user, password, apikey,domain, snapshotid)
+                                        json_snapshot_quality_model = AIPRestAPI.get_snapshot_tqi_quality_model(logger, restapiurl, user, password, apikey,domain, snapshotid)
                                     if json_snapshot_quality_model != None:
                                         for qmitem in json_snapshot_quality_model:
                                             maxWeight = -1
@@ -1043,15 +505,15 @@ if __name__ == '__main__':
                                                 
                                         json_snapshot_quality_model = None
                                         
-                                    loginfo(logger,'Initialization (step 3/5)',True)
+                                    LogUtils.loginfo(logger,'Initialization (step 3/5)',True)
                                     mapbctc = None                                     
                                     if not bload_bc_tch_mapping:
                                         logger.info("NOT Extracting the snapshot business criteria => technical criteria mapping")                                          
                                     else:    
-                                        mapbctc = initialize_bc_tch_mapping(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid, bcids)
+                                        mapbctc = AIPRestAPI.initialize_bc_tch_mapping(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid, bcids)
                                     
                                     # Components PRI
-                                    loginfo(logger,'Initialization (step 4/5)',True)
+                                    LogUtils.loginfo(logger,'Initialization (step 4/5)',True)
                                     comppri = None
                                     transactionlist = {}
                                     
@@ -1060,10 +522,10 @@ if __name__ == '__main__':
                                     else: 
                                         if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                             try : 
-                                                comppri = initialize_components_pri(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid, bcids,nbrows)
+                                                comppri = AIPRestAPI.initialize_components_pri(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid, bcids,nbrows)
                                             except ValueError:
                                                 None
-                                            transactionlist = init_transactions(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid,criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
+                                            transactionlist = AIPRestAPI.init_transactions(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid,criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
                                     
                                     ###################################################################
                                     # table containing the scheduled exclusions to create
@@ -1073,13 +535,13 @@ if __name__ == '__main__':
                                     iCounterFilteredViolations = 0
                                     iCouterRestAPIViolations = 0
 
-                                    loginfo(logger, 'Initialization (step 5/5)',True)
+                                    LogUtils.loginfo(logger, 'Initialization (step 5/5)',True)
                                     # quality rules details (nb violations, % compliance)
                                     json_qr_results = None
                                     if not bload_qr_results:
                                         logger.info("NOT Extracting the quality rules details")                                          
                                     else:    
-                                        json_qr_results = get_qualityrules_results(logger, connection, warname, user, password, apikey, domain, applicationid, criticalrulesonlyfilter, nbrows)
+                                        json_qr_results = AIPRestAPI.get_qualityrules_results(logger, restapiurl, user, password, apikey, domain, applicationid, criticalrulesonlyfilter, nbrows)
                                     if json_qr_results != None:
                                         for res in json_qr_results:
                                             for res2 in res['applicationResults']:
@@ -1122,30 +584,31 @@ if __name__ == '__main__':
                                             # only the last snapshot
                                             break
 
-                                    loginfo(logger, 'Extracting violations',True)
-                                    loginfo(logger, 'Loading violations & components data from the REST API',True)
-                                    json_violations = get_snapshot_violations(logger, connection, warname, user, password, apikey,domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
+                                    LogUtils.loginfo(logger, 'Extracting violations',True)
+                                    LogUtils.loginfo(logger, 'Loading violations & components data from the REST API',True)
+                                    json_violations = AIPRestAPI.get_snapshot_violations(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
                                     if json_violations != None:
-                                        msg = 'Application name;Date;Version;Count (Filter)'
-                                        #msg += ';Count (Rest API);Total # violations (Rest API)'
-                                        msg += ';Total # critical violations;Total # violations'
-                                        msg += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula;QR failed checks;QR Compliance ratio;QR Added violations;QR Removed violations'
-                                        msg += ';Component type;Component name location;Violation status;Component status;Associated value label;Associated value'
-                                        msg += ';Technical criteria;Business Criteria;Quality standards;PRI for selected Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
-                                        msg += ';Number of transactions;Transaction list;'
-                                        msg += 'Efficiency - Number of transactions;Efficiency - Max TRI;Efficiency - Transactions TRI'
-                                        msg += ';Robustness - Number of transactions;Robustness - Max TRI;Robustness - Transactions TRI'
-                                        msg += ';Security - Number of transactions;Security - Max TRI;Security - Transactions TRI'
-                                        msg += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
-                                        msg += ';Action plan status;Action plan tag;Action plan comment'
-                                        msg += ';Exclusion request;Exclusion request comment'
-                                        msg += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmarks;Source code sniplet'
-                                        #print(msg)
-                                        #logger.debug(msg)
-                                        if csvfile:
-                                            #for it in msg.split(";"):
+                                        outputline = 'Application name;Date;Version;Count (Filter)'
+                                        #outputline += ';Count (Rest API);Total # violations (Rest API)'
+                                        outputline += ';Total # critical violations;Total # violations'
+                                        outputline += ';QR Id;QR Name;QR Critical;Max Weight;Compounded Weight;Compounded Weight Formula;QR failed checks;QR Compliance ratio;QR Added violations;QR Removed violations'
+                                        outputline += ';Component type;Component name location;Violation status;Component status;Associated value label;Associated value'
+                                        outputline += ';Technical criteria;Business Criteria;Quality standards;PRI for selected Business criterion;PRI Security;PRI Efficiency;PRI Robustness;PRI Transferability;PRI Changeability'
+                                        outputline += ';Number of transactions;Transaction list;'
+                                        outputline += 'Efficiency - Number of transactions;Efficiency - Max TRI;Efficiency - Transactions TRI'
+                                        outputline += ';Robustness - Number of transactions;Robustness - Max TRI;Robustness - Transactions TRI'
+                                        outputline += ';Security - Number of transactions;Security - Max TRI;Security - Transactions TRI'
+                                        outputline += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
+                                        outputline += ';Action plan status;Action plan tag;Action plan comment'
+                                        outputline += ';Exclusion request;Exclusion request comment'
+                                        outputline += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmarks;Source code sniplet'
+                                        #print(outputline)
+                                        #logger.debug(outputline)
+                                        if outputextension in ('csv', 'xlsx'):
+                                            #for it in outputline.split(";"):
                                             #    csvdata.append(it)
-                                            csvdatas.append(msg)
+                                            csvdatas.append(outputline)
+                                            outputdata += outputline + '\n'
 
                                         # object cache to avoid redoing the same Rest API Calls
                                         dicObjectViolationMetrics = {}
@@ -1158,7 +621,7 @@ if __name__ == '__main__':
                                             violations_size = len(json_violations)
                                             imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
                                             if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
-                                                loginfo(logger, "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
+                                                LogUtils.loginfo(logger, "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
                                             objviol = Violation()      
                                             
                                             try:                                    
@@ -1299,7 +762,7 @@ if __name__ == '__main__':
                                                     objViolationMetric = dicObjectViolationMetrics.get(componentHref)
                                                     #If cache is empty we load from the rest api 
                                                     if objViolationMetric == None:
-                                                        objViolationMetric = get_objectviolation_metrics(logger, connection, warname, user, password, apikey,componentHref)
+                                                        objViolationMetric = AIPRestAPI.get_objectviolation_metrics(logger, restapiurl, user, password, apikey,componentHref)
                                                         if objViolationMetric != None:
                                                             dicObjectViolationMetrics.update({componentHref:objViolationMetric})
                                                     else:
@@ -1315,7 +778,7 @@ if __name__ == '__main__':
                                                     objRulePatternDetails = dictQualityPatternDetails.get(qrrulepatternhref)                                                    
                                                     #If cache is empty we load from the rest api
                                                     if objRulePatternDetails == None:
-                                                        objRulePatternDetails = get_rule_pattern(logger, connection, warname, user, password, apikey,qrrulepatternhref)
+                                                        objRulePatternDetails = AIPRestAPI.get_rule_pattern(logger, restapiurl, user, password, apikey,qrrulepatternhref)
                                                         if objRulePatternDetails != None:
                                                             dictQualityPatternDetails.update({qrrulepatternhref:objRulePatternDetails})
                                                     else:
@@ -1345,7 +808,7 @@ if __name__ == '__main__':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
-                                                    json_findings = get_objectviolation_findings(logger, connection, warname, user, password, apikey,componentHref, objviol.qrid)
+                                                    json_findings = AIPRestAPI.get_objectviolation_findings(logger, restapiurl, user, password, apikey,componentHref, objviol.qrid)
                                                 
                                                 if json_findings != None: 
                                                     fin_name = json_findings['name']
@@ -1382,16 +845,26 @@ if __name__ == '__main__':
         
                                                     if fin_bookmarks != None:
                                                         icountbkm = 0
+                                                        prevfile = ''
                                                         for bkm in fin_bookmarks:
                                                             for bkm2 in bkm:
                                                                 try:
                                                                     icountbkm += 1
+                                                                    # we add a " at the beginning to manage the multiline for code source in excel int the same cell
+                                                                    if strbookmarks == '': strbookmarks ='"'
+                                                                    curfile = bkm2['codeFragment']['file']['name']
                                                                     startLine = bkm2['codeFragment']['startLine']
                                                                     endLine = bkm2['codeFragment']['endLine']
-                                                                    strbookmarks += '#' + str(icountbkm) + ':' + str(startLine)+'=>' + str(endLine) + ','
+                                                                    if curfile != prevfile:
+                                                                        strbookmarks += curfile + '\n'
+                                                                    strbookmarks += '#' + str(icountbkm) + ' line ' + str(startLine)+' => ' + str(endLine) + '\n'
+                                                                    prevfile = curfile
                                                                 except KeyError:
                                                                     None
-                                                        if strbookmarks != '': strbookmarks = strbookmarks[:-1]
+                                                        if strbookmarks == '' or strbookmarks == '"':
+                                                            strbookmarks = ''
+                                                        # we add a " at the end to manage the multiline for code source in excel int the same cell
+                                                        else: strbookmarks = strbookmarks + '"'
                                                         
                                                     if fin_parameters != None:
                                                         for param in fin_parameters:
@@ -1409,7 +882,7 @@ if __name__ == '__main__':
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
-                                                    json_sourcescode = get_sourcecode(logger, connection, sourceCodesHref, warname, user, password, apikey)
+                                                    json_sourcescode = AIPRestAPI.get_sourcecode(logger, restapiurl, sourceCodesHref, warname, user, password, apikey)
                                                     if json_sourcescode != None:
                                                         for src in json_sourcescode:
                                                             filereference = ''
@@ -1431,10 +904,10 @@ if __name__ == '__main__':
                                                             if srcstartline >= 0 and srcendline >= 0:
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
                                                             srcCodeReference.append(filereference)
-                                                            partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, srcstartline, srcendline, user, password, apikey)
+                                                            partialfiletxt = AIPRestAPI.get_sourcecode_file(logger, restapiurl, filehref, srcstartline, srcendline, user, password, apikey)
                                                             if partialfiletxt == None:
                                                                 logger.info("Second try without the line numbers")
-                                                                partialfiletxt = get_sourcecode_file(logger, connection, warname, filehref, None, None, user, password, apikey)
+                                                                partialfiletxt = AIPRestAPI.get_sourcecode_file(logger, restapiurl, filehref, None, None, user, password, apikey)
                                                                 if partialfiletxt != None:
                                                                     logger.info("Second try worked")
                                                             if partialfiletxt == None:
@@ -1484,14 +957,14 @@ if __name__ == '__main__':
                                             objViolationMetric = dicObjectViolationMetrics.get(componentHref)
                                             if objViolationMetric == None:
                                                 objViolationMetric = ObjectViolationMetric() 
-                                            msg = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
-                                            #msg +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
-                                            msg +=  ";" + strtotalcritviol + ";" + strtotalviol 
-                                            msg += ";" + str(objviol.qrid)+ ";" + str(objviol.qrname) + ";" +  str(objviol.qrcritical) + ";" + str(qrdetails.get('maxWeight')) + ";" + str(qrdetails.get('compoundedWeight')) + ";" + qrdetails.get('compoundedWeightFormula') 
-                                            msg += ";" + str(qrdetails.get('failedchecks')) + ";" + str(qrdetails.get('ratio')) + ";" + str(qrdetails.get('addedViolations')) + ";" + str(qrdetails.get('removedViolations'))
+                                            outputline = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
+                                            #outputline +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
+                                            outputline +=  ";" + strtotalcritviol + ";" + strtotalviol 
+                                            outputline += ";" + str(objviol.qrid)+ ";" + str(objviol.qrname) + ";" +  str(objviol.qrcritical) + ";" + str(qrdetails.get('maxWeight')) + ";" + str(qrdetails.get('compoundedWeight')) + ";" + qrdetails.get('compoundedWeightFormula') 
+                                            outputline += ";" + str(qrdetails.get('failedchecks')) + ";" + str(qrdetails.get('ratio')) + ";" + str(qrdetails.get('addedViolations')) + ";" + str(qrdetails.get('removedViolations'))
 
-                                            msg += ";" + str(objViolationMetric.componentType) + ";" + str(objviol.componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
-                                            msg += ";" + str(technicalcriteriaidandnames)
+                                            outputline += ";" + str(objViolationMetric.componentType) + ";" + str(objviol.componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
+                                            outputline += ";" + str(technicalcriteriaidandnames)
                                             #
                                             strlistbc = ''
                                             #mapbctc
@@ -1514,65 +987,65 @@ if __name__ == '__main__':
                                                                 if bcid == "60012": 
                                                                     strlistbc = strlistbc + '60012#Changeability,'
                                             if strlistbc != '': strlistbc = strlistbc[:-1]
-                                            msg += ";" + strlistbc
-                                            msg += ";" + str(strqualitystandards)
+                                            outputline += ";" + strlistbc
+                                            outputline += ";" + str(strqualitystandards)
                                                                                                                                                                                                                                         
                                             #########################################################################
                                             # current PRI focus
-                                            msg += ";"
+                                            outputline += ";"
                                             
                                             if propagationRiskIndex != None: 
-                                                msg += str(propagationRiskIndex)
+                                                outputline += str(propagationRiskIndex)
                                             else: 
-                                                msg += 'No BC selected'
+                                                outputline += 'No BC selected'
                                             # PRI Security
-                                            msg += ";"
+                                            outputline += ";"
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
                                                     pri = str(comppri.get("60016").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            msg += pri
+                                            outputline += StringUtils.NonetoEmptyString(pri)
                                             # PRI Efficiency
-                                            msg += ";"
+                                            outputline += ";"
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
                                                     pri = str(comppri.get("60014").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            msg += pri
+                                            outputline += StringUtils.NonetoEmptyString(pri)
                                             # PRI Robusustness
-                                            msg += ";"
+                                            outputline += ";"
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
                                                     pri = str(comppri.get("60013").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            msg += pri         
+                                            outputline += StringUtils.NonetoEmptyString(pri)         
                                             # PRI Transferability
-                                            msg += ";"
+                                            outputline += ";"
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
                                                     pri = str(comppri.get("60011").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            msg += pri    
+                                            outputline += StringUtils.NonetoEmptyString(pri)    
                                             # PRI Changeability
-                                            msg += ";"
+                                            outputline += ";"
                                             pri = '<Not extracted>'
                                             try:
                                                 if comppri != None:
                                                     pri = str(comppri.get("60012").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            msg += pri
+                                            outputline += StringUtils.NonetoEmptyString(pri)
                                             #########################################################################  
                                             # TQI - Number of transactions & transactions list
-                                            msg += ";" 
+                                            outputline += ";" 
                                             numtrans = 0
                                             strtrans = '<Not extracted>'
                                             try:
@@ -1594,12 +1067,12 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 None
                                             if strtrans != "<Not extracted>": 
-                                                msg += str(numtrans)
-                                            msg += ";"
-                                            msg += strtrans
+                                                outputline += str(numtrans)
+                                            outputline += ";"
+                                            outputline += strtrans
 
                                             # Effiency - Number of transactions & transactions list & TRI
-                                            msg += ";" 
+                                            outputline += ";" 
                                             numtrans = 0
                                             maxtri = 0
                                             strtrans = '<Not extracted>'
@@ -1625,12 +1098,12 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 None
                                             if strtrans != "<Not extracted>": 
-                                                msg += str(numtrans)
-                                            msg += ";" + str(maxtri)                                            
-                                            msg += ";" +  strtrans 
+                                                outputline += str(numtrans)
+                                            outputline += ";" + str(maxtri)                                            
+                                            outputline += ";" +  strtrans 
                                           
                                             # Robustness - Number of transactions & transactions list & TRI
-                                            msg += ";" 
+                                            outputline += ";" 
                                             numtrans = 0
                                             maxtri = 0
                                             strtrans = '<Not extracted>'
@@ -1656,13 +1129,13 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 None
                                             if strtrans != "<Not extracted>": 
-                                                msg += str(numtrans)
-                                            msg += ";" + str(maxtri)                                            
-                                            msg += ";" +  strtrans                                             
+                                                outputline += str(numtrans)
+                                            outputline += ";" + str(maxtri)                                            
+                                            outputline += ";" +  strtrans                                             
                                           
                                             
                                             # Security - Number of transactions & transactions list & TRI
-                                            msg += ";" 
+                                            outputline += ";" 
                                             numtrans = 0
                                             maxtri = 0
                                             strtrans = '<Not extracted>'
@@ -1688,20 +1161,20 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 None
                                             if strtrans != "<Not extracted>": 
-                                                msg += str(numtrans)
-                                            msg += ";" + str(maxtri)                                            
-                                            msg += ";" +  strtrans                                           
+                                                outputline += str(numtrans)
+                                            outputline += ";" + str(maxtri)                                            
+                                            outputline += ";" +  strtrans                                           
                                             #########################################################################                                                                                        
-                                            msg += ";"
-                                            if objViolationMetric.criticalViolations != None: msg += str(objViolationMetric.criticalViolations)
-                                            msg += ";"
-                                            if objViolationMetric.cyclomaticComplexity != None: msg += str(objViolationMetric.cyclomaticComplexity)
-                                            msg += ";"
-                                            if objViolationMetric.codeLines != None: msg += str(objViolationMetric.codeLines)
-                                            msg += ";"
-                                            if objViolationMetric.commentLines != None: msg += str(objViolationMetric.commentLines)
-                                            msg += ";"
-                                            if objViolationMetric.ratioCommentLinesCodeLines != None: msg += str(objViolationMetric.ratioCommentLinesCodeLines)
+                                            outputline += ";"
+                                            if objViolationMetric.criticalViolations != None: outputline += str(objViolationMetric.criticalViolations)
+                                            outputline += ";"
+                                            if objViolationMetric.cyclomaticComplexity != None: outputline += str(objViolationMetric.cyclomaticComplexity)
+                                            outputline += ";"
+                                            if objViolationMetric.codeLines != None: outputline += str(objViolationMetric.codeLines)
+                                            outputline += ";"
+                                            if objViolationMetric.commentLines != None: outputline += str(objViolationMetric.commentLines)
+                                            outputline += ";"
+                                            if objViolationMetric.ratioCommentLinesCodeLines != None: outputline += str(objViolationMetric.ratioCommentLinesCodeLines)
     
                                             #########################################################################                                  
                                             
@@ -1710,48 +1183,46 @@ if __name__ == '__main__':
                                                 actionplantag = objviol.actionPlan['tag']
                                                 actionplancomment = objviol.actionPlan['comment']
                                                 # status
-                                                msg += ";" + actionplanstatus 
+                                                outputline += ";" + actionplanstatus 
                                                 # tag
-                                                msg += ";" + actionplantag
+                                                outputline += ";" + actionplantag
                                                 # comment
-                                                msg += ";" + actionplancomment
+                                                outputline += ";" + actionplancomment
                                             else:
-                                                msg += ";;;" 
+                                                outputline += ";;;" 
                                             if objviol.exclusionRequest != None:
                                                 exclusionRequest = objviol.exclusionRequest['comment']
                                                 # Exclusion request exists
-                                                msg += ";true"
+                                                outputline += ";true"
                                                 # Exclusion request comment
-                                                msg += ";" + exclusionRequest
+                                                outputline += ";" + exclusionRequest
                                             else:
-                                                msg += ";;"                                            
+                                                outputline += ";;"                                            
 
                                             #########################################################################
-                                            msg += ";"+ strparams
+                                            outputline += ";"+ strparams
                                             #########################################################################
                                             currentviolurl = ''
                                             currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
                                             currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
                                             currentviolurl = currentviolfullurl
-                                            msg += ";" + currentviolurl
-                                            msg += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
-                                            msg += ";"+ objviol.violationid
-                                            msg += ";"+ strbookmarks
+                                            outputline += ";" + currentviolurl
+                                            outputline += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
+                                            outputline += ";"+ objviol.violationid
+                                            outputline += ";"+ strbookmarks
                                             # remove unicode characters that are making the reporting fails
-                                            msg = remove_unicode_characters(msg)
+                                            outputline = StringUtils.remove_unicode_characters(outputline)
                                                                                         
                                             #########################################################################
                                             # Show the progress (without the source code)
-                                            logger.debug(msg)
-                                            #print(msg)
-                                            #print(strprogress + "=>" + currentviolurl + '#' +qrrulepatternhref+ '#'+componentHref)
+                                            logger.debug(outputline)
                                             #########################################################################
                                             try:
                                                 '''
                                                 # log only the file reference instead of code
                                                 if len(srcCodeReference) > 0:
                                                     for srcref in srcCodeReference:
-                                                        msg += ';"'+ srcref + '"'                                    
+                                                        outputline += ';"'+ srcref + '"'                                    
                                                 '''
                                                 if len(srcCode) > 0:
                                                     iNbCodeCol = 0
@@ -1759,36 +1230,39 @@ if __name__ == '__main__':
                                                         iNbCodeCol += 1
                                                         # Stop at 100 columns
                                                         if iNbCodeCol > 100:
-                                                            msg += ';...'
+                                                            outputline += ';...'
                                                             break
-                                                        #msg += ';"'+ str(src).replace('"', '""') + '"'
-                                                        # we add only the first 5000 characters
-                                                        msg += ';"'
-                                                        # if ends with " we need to double this character, else the return chariot will not work in Excel
-                                                        strsrcTruncated = str(src).replace('"','""')[0:5000]
-                                                        msg += strsrcTruncated
-                                                        # last character is a " and the previous character is not a "
-                                                        if msg[-1:] == '"' and msg[-2:-1] != '"':
-                                                            msg += '"'
-                                                        msg += '"'
+                                                        if src=='<Not Extracted>':
+                                                            outputline += ';' + src
+                                                        else:
+                                                            #outputline += ';"'+ str(src).replace('"', '""') + '"'
+                                                            # we add only the first 5000 characters
+                                                            outputline += ';"'
+                                                            # if ends with " we need to double this character, else the return chariot will not work in Excel
+                                                            strsrcTruncated = str(src).replace('"','""')[0:5000]
+                                                            outputline += strsrcTruncated
+                                                            # last character is a " and the previous character is not a "
+                                                            if outputline[-1:] == '"' and outputline[-2:-1] != '"':
+                                                                outputline += '"'
+                                                            outputline += '"'
                                                 else:
-                                                    msg += ';N/A'
-                                                #print(remove_unicode_characters(msg))
+                                                    outputline += ';N/A'
+                                                #print(remove_unicode_characters(outputline))
                                             except: # catch *all* exceptions
-                                                msg += ';Error'
+                                                outputline += ';Error'
                                                 tb = traceback.format_exc()
                                                 #e = sys.exc_info()[0]
                                                 logging.error('  Error to get the source code %s' % tb)
 
                                             # remove unicode characters that are making the reporting fails
-                                            msg = remove_unicode_characters(msg)                                            
+                                            outputline = StringUtils.remove_unicode_characters(outputline)                                            
                                             #########################################################################
                                             # append the data
-                                            if csvfile:
-                                                #for it in msg.split(";"):
+                                            if outputextension in ('csv','xlsx'):
+                                                #for it in outputline.split(";"):
                                                 #    csvdata.append(it)
-                                                #csvdatas.append(csvdata)
-                                                csvdatas.append(msg)
+                                                csvdatas.append(outputline)
+                                                outputdata += outputline + '\n'
                                             
                                             #########################################################################
                                             if createexclusions and exclusionRequest == None:
@@ -1825,17 +1299,17 @@ if __name__ == '__main__':
 
                                     #########################################################################
 
-                                    
-                                    strAppHref = domain + '/applications/' + str(applicationid)
+                                    #TODO: change to requests lib - exclusion 
                                     if createexclusions and json_new_scheduledexclusions != None and len(json_new_scheduledexclusions) > 0:
                                         logger.info("Creating "  + str(len(json_new_scheduledexclusions)) + " new exclusions : " + str(json_new_scheduledexclusions))
-                                        create_scheduledexclusions(logger, connection, warname, user, password, apikey,strAppHref, json_new_scheduledexclusions)
+                                        AIPRestAPI.create_scheduledexclusions(logger, restapiurl, domain, user, password, apikey,applicationid,snapshotid, json_new_scheduledexclusions)
                                     else:
                                         logger.info("No exclusion created")
                                         
+                                    #TODO: change to requests lib - action plan
                                     if createactionplans and json_new_actionplans != None:
                                         logger.info("Creating "  + str(len(json_new_actionplans)) + "action plan items " + str(json_new_actionplans))
-                                        create_actionplans(logger, connection, warname, user, password, apikey,strAppHref, json_new_actionplans)
+                                        AIPRestAPI.create_actionplans(logger, restapiurl, domain, user, password, apikey,applicationid,snapshotid, json_new_actionplans)
                                     else:
                                         logger.info("No action plan created")                                    
                                     
@@ -1855,14 +1329,17 @@ if __name__ == '__main__':
                                     else: msg += "0\n"
                                     logger.info(msg)
 
-                                    # generated csv file if required                                    
-                                    if csvfile != None and csvfile:
-                                        fpath = get_csvfilepath(outputfolder, appName)
-                                        logger.info("Generating csv file " + fpath)
-                                        generate_csvfile(logger, csvdatas, fpath)
+                                    # generated output file if required                                    
+                                    if outputextension != None:
+                                        fpath = get_filepath(outputfolder, appName, outputextension)
+                                        logger.info("Generating " + outputextension + " file " + fpath)
+                                        if outputextension == 'csv':
+                                            generate_output_file(logger, outputextension, outputdata, fpath)
+                                        elif outputextension == 'xlsx':
+                                            generate_output_file(logger, outputextension, outputdata, fpath)
                                     # keep only last snapshot
                                     break
-        close_connection(logger, connection)   
+        close_connection(logger)   
     except: # catch *all* exceptions
         tb = traceback.format_exc()
         #e = sys.exc_info()[0]

@@ -12,8 +12,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 from io import StringIO
 import xlsxwriter
-from utils.utils import open_connection, close_connection
-from utils.utils import AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils
+from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation
 
 '''
  Author : MMR
@@ -22,27 +21,6 @@ from utils.utils import AIPRestAPI, LogUtils, ObjectViolationMetric, RulePattern
 #Security,Efficiency,Robustness,Transferability,Changeability
 bcids = ["60016","60014","60013","60012","60011"]
 
-########################################################################
-
-# violation class
-class Violation:
-    id = None
-    qrid = None
-    qrname = None
-    critical = None
-    componentid = None
-    componentShortName = None
-    componentNameLocation = None
-    hasActionPlan = False
-    actionplanstatus = ''
-    actionplantag = ''
-    actionplancomment = ''
-    hasExclusionRequest = False
-    url = None
-    violationstatus = None
-    componentstatus = None
-
- 
 ########################################################################
 
 def init_parse_argument():
@@ -82,36 +60,41 @@ def init_parse_argument():
     requiredNamed.add_argument('-outputextension', required=False, dest='outputextension', help='Output file (xlsx|csv) default = csv')
     requiredNamed.add_argument('-loglevel', required=False, dest='loglevel', help='Log level (INFO|DEBUG) default = INFO')
     requiredNamed.add_argument('-nbrows', required=False, dest='nbrows', help='max number of rows extracted from the rest API, default = 1000000000')
+    requiredNamed.add_argument('-extensioninstallationfolder', required=False, dest='extensioninstallationfolder', help='extension installation folder')    
     
     return parser
 ########################################################################
 
-def generate_output_file(logger, outputextension, data, filepath):
-    if data != None:
+def generate_output_file(logger, outputextension, header, outputdata, filepath):
+    if outputdata != None:
         '''if outputextension == 'csv':
                 # Not working, using below basic preocessing instead 
                 #with open(filepath, mode='w', newline='') as csv_file:
                 #csv_writer = csv.writer(csv_file, delimiter=';')
                 # write in csv file
-                #csv_writer.writerows(data)
+                #csv_writer.writerows(outputdata)
             file = open(filepath, 'w')
-            for line in data:
+            for line in outputdata:
                 #linesplited = line.split(';')
                 #msg = 'writing line ' + line#linesplited[0] 
                 #logger.debug(msg)
                 file.write(line + '\n')
         elif outputextension == 'xlsx':
-            #df_data = pd.read_csv(StringIO(remove_unicode_characters(str_readme_content)), sep=";",engine='python',quoting=csv.QUOTE_NONE)
+            #df_outputdata = pd.read_csv(StringIO(remove_unicode_characters(str_readme_content)), sep=";",engine='python',quoting=csv.QUOTE_NONE)
             None
         '''
         if outputextension == 'csv':
             file = open(filepath, 'w')
-            file.write(data)            
+            file.write(outputdata)            
         elif outputextension == 'xlsx':
+            df_data = '' 
             try: 
-                df_data = pd.read_csv(StringIO(data), sep=";",engine='python',quoting=csv.QUOTE_NONE)
+                df_data = pd.read_csv(StringIO(outputdata), sep=";",engine='python',quoting=csv.QUOTE_NONE)
             except: 
-                LogUtils.logerror(logger,'csv.Error: unexpected end of data : readme',True)            
+                tb = traceback.format_exc()
+                LogUtils.logerror(logger,'csv.Error: unexpected end of data ' + tb,True)
+                # we generate an empty file with only the header line
+                df_data = pd.read_csv(StringIO(header), sep=";",engine='python',quoting=csv.QUOTE_NONE)
             file = open(filepath, 'w')
             with pd.ExcelWriter(filepath,engine='xlsxwriter') as writer:
                 df_data.to_excel(writer, sheet_name='Violations', index=False)
@@ -163,19 +146,6 @@ if __name__ == '__main__':
         log = args.log
     outputfolder = args.outputfolder 
 
-    # Version
-    
-    script_version = "1.0.7"
-    '''script_version = "Unknown"
-    try:
-        root = ET.parse('plugin.nuspec').getroot()
-        for tagversion in root.findall('metadata'):
-            script_version = tagversion.text
-            None
-    except:
-        logwarning(logger,'Not able to read the extension version in plugin.nuspec',True)
-    ''' 
-
     # new params
     applicationfilter = args.applicationfilter
     qridfilter = args.qridfilter
@@ -224,7 +194,13 @@ if __name__ == '__main__':
     nbrows = 1000000000
     if args.nbrows != None and type(nbrows) == int: 
         nbrows=args.nbrows
-    
+    extensioninstallationfolder = "."
+    if args.extensioninstallationfolder != None:
+        extensioninstallationfolder = args.extensioninstallationfolder
+    # add trailing / if not exist 
+    if extensioninstallationfolder[-1:] != '/' and extensioninstallationfolder[-1:] != '\\' :
+        extensioninstallationfolder += '/'
+            
     # Do not change this parameter value, just used to speed up the debugging in some specific cases
     bload_all_data = True
     bload_objectviolation_metrics = bload_all_data
@@ -235,6 +211,7 @@ if __name__ == '__main__':
     bload_components_pri = bload_all_data
     bload_serverdetail = bload_all_data
     bload_quality_model = True
+    bload_distributions = bload_all_data
 
     ###########################################################################
     # Forcing the filter values (harcoded), for testing
@@ -291,6 +268,19 @@ if __name__ == '__main__':
         logger.setLevel(logging.INFO)
 
     try:
+        # Version
+        script_version = 'Unknown'
+        try:
+            pluginfile = extensioninstallationfolder + 'plugin.nuspec'
+            LogUtils.loginfo(logger,pluginfile,True)
+            tree = ET.parse(pluginfile)
+            root = tree.getroot()
+            namespace = "{http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd}"
+            for versiontag in root.findall('{0}metadata/{0}version'.format(namespace)):
+                script_version = versiontag.text
+        except:
+            None        
+        
         currentviolurl = ''
         qrrulepatternhref = ''
         componentHref = ''
@@ -320,7 +310,7 @@ if __name__ == '__main__':
     
         # log params
         logger.info('********************************************')
-        logger.info('script_version='+script_version)
+        LogUtils.loginfo(logger,'script_version='+script_version,True)
         logger.info('python version='+sys.version)
         logger.info('****************** params ******************')
         logger.info('restapiurl='+restapiurl)
@@ -366,16 +356,19 @@ if __name__ == '__main__':
         logger.info('bload_serverdetail='+str(bload_serverdetail))
         logger.info('bload_quality_model='+str(bload_quality_model))
         
-        logger.info('********************************************')    
-        connection = open_connection(logger, restapiurl, user, password)     
+        logger.info('********************************************') 
+        rest_utils = RestUtils(logger, restapiurl, user, password, apikey)
+        rest_utils.open_session()
+        rest_service = AIPRestAPI(rest_utils) 
+    
         LogUtils.loginfo(logger,'Initialization',True)
         # few checks on the server
         json_server = None
         if not bload_serverdetail:
             logger.debug("NOT loading the server detail")
         else: 
-            json_server = AIPRestAPI.get_server(logger, restapiurl, user, password, apikey)
-        
+            json_server = rest_service.get_server()
+            
         if json_server != None:
             logger.info('server status=' + json_server['status'])    
             servversion = json_server['version']
@@ -387,7 +380,7 @@ if __name__ == '__main__':
             logger.info('********************************************')    
         
         # retrieve the domains & the applications in those domains 
-        json_domains = AIPRestAPI.get_domains(logger, restapiurl, user, password, apikey)
+        json_domains = rest_service.get_domains()
         if json_domains != None:
             idomain = 0
             for item in json_domains:
@@ -401,7 +394,7 @@ if __name__ == '__main__':
                 LogUtils.loginfo(logger,"Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains)),True)
                 # only engineering domains
                 if domain != 'AAD':  #and domain == 'AED_AYYILDIZ':
-                    json_apps = AIPRestAPI.get_applications(logger, restapiurl, user, password, apikey,domain)
+                    json_apps = rest_service.get_applications(domain)
                     applicationid = -1
                     appHref = ''
                     appName = ''
@@ -440,7 +433,7 @@ if __name__ == '__main__':
                                     LogUtils.logerror(logger,'File %s is locked, aborting for application %s' % (fpath,appName),True)
                                     continue
                             # snapshot list
-                            json_snapshots = AIPRestAPI.get_application_snapshots(logger, restapiurl, user, password, apikey,domain, applicationid)
+                            json_snapshots = rest_service.get_application_snapshots(domain, applicationid)
                             if json_snapshots != None:
                                 for snap in json_snapshots:
                                     csvdata = []
@@ -460,10 +453,11 @@ if __name__ == '__main__':
                                     snapshotdate =  snap['annotation']['date']['isoDate']    
                                     logger.info("    Snapshot " + snapHref + '#' + snapshotid)
 
-
+                                    
+                                    ###################################################################
                                     # Number of violations / snapshots
-                                    LogUtils.loginfo(logger,'Initialization (step 1/5)',True)
-                                    json_tot_violations = AIPRestAPI.get_total_number_violations(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid)
+                                    LogUtils.loginfo(logger,'Initialization (step 1/6) - Number of violations',True)
+                                    json_tot_violations = rest_service.get_total_number_violations(domain, applicationid, snapshotid)
                                     intotalviol = -1
                                     intotalcritviol = -1
                                     if (json_tot_violations != None):
@@ -476,14 +470,15 @@ if __name__ == '__main__':
                                                 elif elm['reference']['key'] == "67211":
                                                     intotalviol = elm['result']['value']
                                                                         
+                                    ###################################################################
                                     # retrieve the mapping quality url id => technical criterion id
                                     tqiqm = {}
                                     json_snapshot_quality_model = None
-                                    LogUtils.loginfo(logger,'Initialization (step 2/5)',True)
+                                    LogUtils.loginfo(logger,'Initialization (step 2/6) - Quality model',True)
                                     if not bload_quality_model:
                                         logger.info("NOT Extracting the snapshot quality model")                                           
                                     else:
-                                        json_snapshot_quality_model = AIPRestAPI.get_snapshot_tqi_quality_model(logger, restapiurl, user, password, apikey,domain, snapshotid)
+                                        json_snapshot_quality_model = rest_service.get_snapshot_tqi_quality_model(domain, snapshotid)
                                     if json_snapshot_quality_model != None:
                                         for qmitem in json_snapshot_quality_model:
                                             maxWeight = -1
@@ -504,16 +499,18 @@ if __name__ == '__main__':
                                                 tqiqm.get(qrid).get("tc").update({tccont['technicalCriterion']['key']: tccont['technicalCriterion']['name']})
                                                 
                                         json_snapshot_quality_model = None
-                                        
-                                    LogUtils.loginfo(logger,'Initialization (step 3/5)',True)
+                                    
+                                    ###################################################################    
+                                    LogUtils.loginfo(logger,'Initialization (step 3/6) - Technical criteria contributions',True)
                                     mapbctc = None                                     
                                     if not bload_bc_tch_mapping:
                                         logger.info("NOT Extracting the snapshot business criteria => technical criteria mapping")                                          
                                     else:    
-                                        mapbctc = AIPRestAPI.initialize_bc_tch_mapping(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid, bcids)
+                                        mapbctc = rest_service.initialize_bc_tch_mapping(domain, applicationid, snapshotid, bcids)
                                     
+                                    ###################################################################
                                     # Components PRI
-                                    LogUtils.loginfo(logger,'Initialization (step 4/5)',True)
+                                    LogUtils.loginfo(logger,'Initialization (step 4/6) - Components PRI',True)
                                     comppri = None
                                     transactionlist = {}
                                     
@@ -522,11 +519,22 @@ if __name__ == '__main__':
                                     else: 
                                         if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                             try : 
-                                                comppri = AIPRestAPI.initialize_components_pri(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid, bcids,nbrows)
+                                                comppri = rest_service.initialize_components_pri(domain, applicationid, snapshotid, bcids,nbrows)
                                             except ValueError:
                                                 None
-                                            transactionlist = AIPRestAPI.init_transactions(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid,criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
+                                            transactionlist = rest_service.init_transactions(domain, applicationid, snapshotid, criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
                                     
+                                    ###################################################################
+                                    LogUtils.loginfo(logger,'Initialization (step 5/6) - Distributions',True)
+                                    dictdistributions = {}
+                                    if not bload_distributions:
+                                        logger.info("NOT extracting the distributions")
+                                    else: 
+                                        if detaillevel == 'Intermediate' or detaillevel == 'Full':
+                                            try : 
+                                                dictdistributions = rest_service.get_distributions_details(domain, applicationid, snapshotid, nbrows)
+                                            except:
+                                                LogUtils.logwarning(logger, 'Error extracting the distributions', True)
                                     ###################################################################
                                     # table containing the scheduled exclusions to create
                                     json_new_scheduledexclusions = []
@@ -535,13 +543,13 @@ if __name__ == '__main__':
                                     iCounterFilteredViolations = 0
                                     iCouterRestAPIViolations = 0
 
-                                    LogUtils.loginfo(logger, 'Initialization (step 5/5)',True)
+                                    LogUtils.loginfo(logger, 'Initialization (step 6/6) - Quality metrics results',True)
                                     # quality rules details (nb violations, % compliance)
                                     json_qr_results = None
                                     if not bload_qr_results:
-                                        logger.info("NOT Extracting the quality rules details")                                          
+                                        logger.info("NOT Extracting the quality metrics results")                                          
                                     else:    
-                                        json_qr_results = AIPRestAPI.get_qualityrules_results(logger, restapiurl, user, password, apikey, domain, applicationid, criticalrulesonlyfilter, nbrows)
+                                        json_qr_results = rest_service.get_qualitymetrics_results(domain, applicationid, criticalrulesonlyfilter, nbrows)
                                     if json_qr_results != None:
                                         for res in json_qr_results:
                                             for res2 in res['applicationResults']:
@@ -586,7 +594,8 @@ if __name__ == '__main__':
 
                                     LogUtils.loginfo(logger, 'Extracting violations',True)
                                     LogUtils.loginfo(logger, 'Loading violations & components data from the REST API',True)
-                                    json_violations = AIPRestAPI.get_snapshot_violations(logger, restapiurl, user, password, apikey,domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
+                                    json_violations = rest_service.get_snapshot_violations(domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
+                                    header = ''
                                     if json_violations != None:
                                         outputline = 'Application name;Date;Version;Count (Filter)'
                                         #outputline += ';Count (Rest API);Total # violations (Rest API)'
@@ -598,10 +607,13 @@ if __name__ == '__main__':
                                         outputline += 'Efficiency - Number of transactions;Efficiency - Max TRI;Efficiency - Transactions TRI'
                                         outputline += ';Robustness - Number of transactions;Robustness - Max TRI;Robustness - Transactions TRI'
                                         outputline += ';Security - Number of transactions;Security - Max TRI;Security - Transactions TRI'
+                                        
+                                        outputline += ';Cyclomatic complexity dist.;Cost complexity dist.;Fan-Out dist.;Fan-In dist.;Size dist.;Coupling dist.;SQL complexity dist' 
                                         outputline += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
                                         outputline += ';Action plan status;Action plan tag;Action plan comment'
                                         outputline += ';Exclusion request;Exclusion request comment'
                                         outputline += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmarks;Source code sniplet'
+                                        header = outputline 
                                         #print(outputline)
                                         #logger.debug(outputline)
                                         if outputextension in ('csv', 'xlsx'):
@@ -762,7 +774,7 @@ if __name__ == '__main__':
                                                     objViolationMetric = dicObjectViolationMetrics.get(componentHref)
                                                     #If cache is empty we load from the rest api 
                                                     if objViolationMetric == None:
-                                                        objViolationMetric = AIPRestAPI.get_objectviolation_metrics(logger, restapiurl, user, password, apikey,componentHref)
+                                                        objViolationMetric = rest_service.get_objectviolation_metrics(componentHref)
                                                         if objViolationMetric != None:
                                                             dicObjectViolationMetrics.update({componentHref:objViolationMetric})
                                                     else:
@@ -778,7 +790,7 @@ if __name__ == '__main__':
                                                     objRulePatternDetails = dictQualityPatternDetails.get(qrrulepatternhref)                                                    
                                                     #If cache is empty we load from the rest api
                                                     if objRulePatternDetails == None:
-                                                        objRulePatternDetails = AIPRestAPI.get_rule_pattern(logger, restapiurl, user, password, apikey,qrrulepatternhref)
+                                                        objRulePatternDetails = rest_service.get_rule_pattern(qrrulepatternhref)
                                                         if objRulePatternDetails != None:
                                                             dictQualityPatternDetails.update({qrrulepatternhref:objRulePatternDetails})
                                                     else:
@@ -808,7 +820,7 @@ if __name__ == '__main__':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
-                                                    json_findings = AIPRestAPI.get_objectviolation_findings(logger, restapiurl, user, password, apikey,componentHref, objviol.qrid)
+                                                    json_findings = rest_service.get_objectviolation_findings(componentHref, objviol.qrid)
                                                 
                                                 if json_findings != None: 
                                                     fin_name = json_findings['name']
@@ -882,7 +894,7 @@ if __name__ == '__main__':
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
-                                                    json_sourcescode = AIPRestAPI.get_sourcecode(logger, restapiurl, sourceCodesHref, warname, user, password, apikey)
+                                                    json_sourcescode = rest_service.get_sourcecode(sourceCodesHref)
                                                     if json_sourcescode != None:
                                                         for src in json_sourcescode:
                                                             filereference = ''
@@ -904,10 +916,10 @@ if __name__ == '__main__':
                                                             if srcstartline >= 0 and srcendline >= 0:
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
                                                             srcCodeReference.append(filereference)
-                                                            partialfiletxt = AIPRestAPI.get_sourcecode_file(logger, restapiurl, filehref, srcstartline, srcendline, user, password, apikey)
+                                                            partialfiletxt = rest_service.get_sourcecode_file(filehref, srcstartline, srcendline)
                                                             if partialfiletxt == None:
                                                                 logger.info("Second try without the line numbers")
-                                                                partialfiletxt = AIPRestAPI.get_sourcecode_file(logger, restapiurl, filehref, None, None, user, password, apikey)
+                                                                partialfiletxt = rest_service.get_sourcecode_file(filehref, None, None)
                                                                 if partialfiletxt != None:
                                                                     logger.info("Second try worked")
                                                             if partialfiletxt == None:
@@ -1164,7 +1176,66 @@ if __name__ == '__main__':
                                                 outputline += str(numtrans)
                                             outputline += ";" + str(maxtri)                                            
                                             outputline += ";" +  strtrans                                           
-                                            #########################################################################                                                                                        
+                                            #########################################################################      
+                                            # Distributions
+                                            # Cyclomatic complexity dist. 
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("65501").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist
+                                            # Cost complexity dist. 
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("67001").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist
+                                            # Fan-Out dist.
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("66020").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist
+                                            # Fan-In dist
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("66021").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist
+                                            # Size dist.
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("65105").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist
+                                            # Coupling dist.
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("65350").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist                                            
+                                            # SQL complexity dist.
+                                            strdist = '<Not extracted>'
+                                            try:
+                                                strdist = dictdistributions.get("65801").get(componentHref)
+                                                if strdist == None: strdist = ''
+                                            except:
+                                                None
+                                            outputline += ';' + strdist                                             
+                                            
+                                            #########################################################################                                                                                                                              
                                             outputline += ";"
                                             if objViolationMetric.criticalViolations != None: outputline += str(objViolationMetric.criticalViolations)
                                             outputline += ";"
@@ -1302,14 +1373,14 @@ if __name__ == '__main__':
                                     #TODO: change to requests lib - exclusion 
                                     if createexclusions and json_new_scheduledexclusions != None and len(json_new_scheduledexclusions) > 0:
                                         logger.info("Creating "  + str(len(json_new_scheduledexclusions)) + " new exclusions : " + str(json_new_scheduledexclusions))
-                                        AIPRestAPI.create_scheduledexclusions(logger, restapiurl, domain, user, password, apikey,applicationid,snapshotid, json_new_scheduledexclusions)
+                                        rest_service.create_scheduledexclusions(domain, applicationid,snapshotid, json_new_scheduledexclusions)
                                     else:
                                         logger.info("No exclusion created")
                                         
                                     #TODO: change to requests lib - action plan
                                     if createactionplans and json_new_actionplans != None:
                                         logger.info("Creating "  + str(len(json_new_actionplans)) + "action plan items " + str(json_new_actionplans))
-                                        AIPRestAPI.create_actionplans(logger, restapiurl, domain, user, password, apikey,applicationid,snapshotid, json_new_actionplans)
+                                        rest_service.create_actionplans(domain, applicationid,snapshotid, json_new_actionplans)
                                     else:
                                         logger.info("No action plan created")                                    
                                     
@@ -1333,13 +1404,10 @@ if __name__ == '__main__':
                                     if outputextension != None:
                                         fpath = get_filepath(outputfolder, appName, outputextension)
                                         logger.info("Generating " + outputextension + " file " + fpath)
-                                        if outputextension == 'csv':
-                                            generate_output_file(logger, outputextension, outputdata, fpath)
-                                        elif outputextension == 'xlsx':
-                                            generate_output_file(logger, outputextension, outputdata, fpath)
+                                        if outputextension == 'csv' or outputextension == 'xlsx':
+                                            generate_output_file(logger, outputextension, header, outputdata, fpath)
                                     # keep only last snapshot
                                     break
-        close_connection(logger)   
     except: # catch *all* exceptions
         tb = traceback.format_exc()
         #e = sys.exc_info()[0]

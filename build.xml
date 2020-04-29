@@ -2,8 +2,6 @@
 <project default="build" name="Create nugget packaging for the extension">
     <!--this file was created by Eclipse Runnable JAR Export Wizard-->
     <!--ANT 1.7 is required                                        -->
-	<property file = "version.properties"/>
-	
 	<property name="extension.name" value="com.castsoftware.uc.violationextraction" />
 	
 	<property name="project.dir" value="C:\Users\mmr\workspace\${extension.name}"/>
@@ -12,7 +10,7 @@
 		<!--Nugget command to package the extension -->
 		<exec executable="cmd">
 		    <arg value="/c"/>
-		    <arg value="nugget_package.bat"/>
+		    <arg value="nuget_package.bat"/>
 			<arg value="${version}"/>
 		</exec>
 

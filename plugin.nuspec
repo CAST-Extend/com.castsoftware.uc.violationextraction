@@ -9,7 +9,7 @@
     <projectUrl>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/CAST-Extend/com.castsoftware.uc.violationextraction/master/export_csv-512.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <description>Extension to export the violations for CAST Engineering Dashboard REST API into a CSV report and also to create action plan items or violations exclusions</description>
+    <description>Prioritize the violations on the PRI, TRI, and many others criterias. Export the violations for CAST Engineering Dashboard REST API into a CSV report.Inject selected violations into action plan or exclusions</description>
     <releaseNotes>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki#version-107</releaseNotes>
     <tags>CASTUserCommunity Quality</tags>
     <dependencies>

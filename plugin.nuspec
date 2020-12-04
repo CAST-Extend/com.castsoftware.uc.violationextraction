@@ -17,7 +17,7 @@
     </dependencies>
   </metadata>
    <files>
-     <file src="**\*" exclude="test\**\*.*;bat\**\*.*;TEF\**\*.*;**\*.csv;**\*.log;**\*.png;**\*.gitignore;**\*.xml;**githubwiki**\*.txt;nugget_package.bat"/>
+     <file src="**\*" exclude="test\**\*.*;bat\**\*.*;**\*.csv;**\*.xslx;**\*.log;**\*.png;**\*.gitignore;**\*.xml;**githubwiki**\*.txt;nuget_package.bat;**\*.CASTArchitect;**\*violation_extraction_ign.py;**\*application_complexity.py"/>
    </files>
 	
 </package>

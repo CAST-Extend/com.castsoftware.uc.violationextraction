@@ -1,188 +1,171 @@
 @echo off
+
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-REM configure python path if not defined
-REM min version to use is Python 3.6
-SET PYTHON_PATH_IF_NOT_DEF_IN_ENV=C:\Python\Python37
-IF "%PYTHONPATH%"=="" SET PYTHONPATH=%PYTHON_PATH_IF_NOT_DEF_IN_ENV%
-"%PYTHONPATH%\python" -V
+REM configure python path, not required if python is on the path
+SET PYTHONPATH=
+REM SET PYTHONPATH=C:\Python\Python37\
+SET PYTHONCMD=python
+IF NOT "%PYTHONPATH%" == "" SET PYTHONCMD=%PYTHONPATH%\python
+
+ECHO =================================
+"%PYTHONCMD%" -V
+ECHO =================================
+
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 REM install the additional python lib required
-"%PYTHONPATH%\Scripts\pip" install pandas
-"%PYTHONPATH%\Scripts\pip" install requests 
-"%PYTHONPATH%\Scripts\pip" install xlsxwriter
-:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-:: Rest API URL  : http|https://host(:port)(/EngineeringWarName) or http|https://host(:port)(/CAST-RESTAPIWarName) 
-SET RESTAPIURL=https://demo-eu.castsoftware.com/Engineering
-SET CMD_RESTAPIURL=-restapiurl "%RESTAPIURL%"
+REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install pandas
+REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install requests 
+REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install xlsxwriter
 
-::When the Engineering dashboard URL and Rest API are different, fill the below parameter 
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+:: REST API URL : http|https://host(:port)(/WarName)/rest
+SET RESTAPIURL=https://demo-eu.castsoftware.com/Engineering/rest
+
+::When the Engineering dashboard URL and Rest API don't have the same root, fill the below parameter
+::if empty will take above URL without /rest 
 :: Engineering dahsboard URL  : http|https://host(:port)(/EngineeringWarName) 
 ::SET EDURL=https://demo-eu.castsoftware.com/Engineering
-SET CMD_EDURL=
-::SET CMD_EDURL=-edurl "%RESTAPIURL%"
 
-::SET USER=N/A
+::SET APIKEY=N/A
 SET USER=CIO
-SET CMD_USER=-user "%USER%"
-::SET PASSWORD=N/A
 SET PASSWORD=cast
-SET CMD_PASSWORD=-password "%PASSWORD%"
-SET APIKEY=N/A
-SET CMD_APIKEY=-apikey "%APIKEY%"
 
-:: Output folder
-SET OUTPUTFOLDER=C:\Users\mmr\workspace\com.castsoftware.uc.violationextraction
-SET CMD_OUTPUTFOLDER=-of "%OUTPUTFOLDER%"
-
-SET LOGFILE=%OUTPUTFOLDER%\violation_data_extraction.log
-SET CMD_LOGFILE=-log "%LOGFILE%"
-
-SET EXTENSIONINSTALLATIONFOLDER=%~dp0
-SET CMD_EXTENSIONINSTALLATIONFOLDER=-extensioninstallationfolder %EXTENSIONINSTALLATIONFOLDER%
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Level of detail : Full|Intermediate|Simple, default is Intermediate (better performance than Full)
 SET DETAILLEVEL=Intermediate
-SET CMD_DETAILLEVEL=
-SET CMD_DETAILLEVEL=-detaillevel "%DETAILLEVEL%"
 
 :: Application name regexp filter
 ::SET APPFILTER=Webgoat^|eComm.*
 SET APPFILTER=Webgoat
-SET CMD_APPFILTER=
-SET CMD_APPFILTER=-applicationfilter "%APPFILTER%"
 
+:: Critical rules violations filter: true|false (default = false)
+SET CRITICALONLYFILTER=true
 
-:: Quality rule id regexp filter
-::SET QRIDFILTER=7802|7804
-SET CMD_QRIDFILTER=
-::SET CMD_QRIDFILTER=-qridfilter %QRIDFILTER%
+:: Display the source code in violation in the csv file : true|false, default = false
+:: SET DISPLAYSOURCE=true
 
-
-:: Quality rule name regexp  filter
-::SET QRNAMEFILTER=
-SET CMD_QRNAMEFILTER=
-::SET CMD_QRNAMEFILTER=-qrnamefilter "%QRNAMEFILTER%"
-
-
-:: Component location regexp (aka object full name) filter
-::SET COMPONLOCATIONFILTER=.*/Web/.*
-SET CMD_COMPONLOCATIONFILTER=
-::SET CMD_COMPONLOCATIONFILTER=-componentnamelocationfilter "%COMPONLOCATIONFILTER%"
-
-
-:: Filter the violations : WithActionPlan|WithoutActionPlan
-:: WithActionPlan : in the action plan
-:: WithoutActionPlan : not in the action plan
-:: empty : no filter
-::SET ACTIONPLANFILTER=WithActionPlan
-SET CMD_ACTIONPLANFILTER=
-::SET CMD_ACTIONPLANFILTER=-actionplanfilter "%ACTIONPLANFILTER%"
-
-
-:: Filter the violations having an exclusion request: Excluded|NotExcluded
-:: Excluded : have an exclusion request
-:: NotExcluded : no exclusion request
-:: empty : no filter
-::SET EXCLUREQUESTFILTER=Excluded
-SET CMD_EXCLUREQUESTFILTER=
-::SET CMD_EXCLUREQUESTFILTER=-exclusionrequestfilter "%EXCLUREQUESTFILTER%"
-
-
-:: Critical rules violations filter: true|false
-::SET CRITICALONLYFILTER=true
-SET CMD_CRITICALONLYFILTER=
-::SET CMD_CRITICALONLYFILTER=-criticalrulesonlyfilter "%CRITICALONLYFILTER%"
-
-
-:: Violation status filter: added|unchanged
-::SET VIOLATIONSTATUSFILTER=added
-SET CMD_VIOLATIONSTATUSFILTER=
-::SET CMD_VIOLATIONSTATUSFILTER=-violationstatusfilter "%VIOLATIONSTATUSFILTER%"
-
-
-:: Component status filter: added|updated|unchanged
-::SET COMPONSTATUSFILTER=added
-SET CMD_COMPONSTATUSFILTER=
-::SET CMD_COMPONSTATUSFILTER=-componentstatusfilter "%COMPONSTATUSFILTER%"
-
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Business criterion filter : 60017 (Total Quality Index)|60016 (Security)|60014 (Efficiency)|60013 (Robustness)|60011 (Transferability)|60012 (Changeability)
-:: to filter the violations and retrieve the PRI for this business criterion (if only one is selected)
+:: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
 ::SET BCFILTER=60016,60014
 ::SET BCFILTER=60016
-SET CMD_BCFILTER=
-::SET CMD_BCFILTER=-businesscriterionfilter "%BCFILTER%"
 
-:: Minimum PRI value filter, applicable only if businesscriterionfilter is filled with one business criterion
-::SET PRIMINVALUEFILTER=500
-SET CMD_PRIMINVALUEFILTER=
-::SET CMD_PRIMINVALUEFILTER=-priminvaluefilter "%PRIMINVALUEFILTER%"
-
+:: Filter the violations : WithActionPlan=in the action plan|WithoutActionPlan=not in the action plan|empty=no filter
+::SET ACTIONPLANFILTER=WithActionPlan
 
 :: Technology list filter
 ::SET TECHNOFILTER=JEE,SQL
-SET CMD_TECHNOFILTER=
-::SET CMD_TECHNOFILTER=-technofilter "%TECHNOFILTER%"
 
+:: Filter the violations having an exclusion request: Excluded=have an exclusion request|NotExcluded=no exclusion request|empty=no filter
+::SET EXCLUDEQUESTFILTER=Excluded
+
+:: Violation status filter: added|unchanged (default = no filter)
+::SET VIOLATIONSTATUSFILTER=added
+
+:: Component status filter: added|updated|unchanged (default = no filter)
+::SET COMPONSTATUSFILTER=added
+
+:: Quality rule id regexp filter (default = no filter)
+:: SET CMD_QRIDFILTER=
+
+:: Quality rule name regexp  filter (default = no filter)
+:: SET CMD_QRNAMEFILTER=
+
+:: Component location regexp (aka object full name) filter. (default = no filter)
+::SET COMPONLOCATIONFILTER=.*/Web/.*
+
+:: Minimum PRI value filter, applicable only if businesscriterionfilter is filled with one business criterion
+::SET PRIMINVALUEFILTER=500
 
 :: Components filter list, using the Rest API component href
 ::SET COMPONENTSFILTER=DOMAIN08/components/121756,DOMAIN08/components/12875
-SET CMD_COMPONENTSFILTER=
-::SET CMD_COMPONENTSFILTER=-componentsfilter "%COMPONENTSFILTER%"
-
 
 :: Violations id filter list, using the Rest API quality rule href and component href, separated by # and , separator for multiple values
 ::SET VIOLATIONSFILTER=DOMAIN08/rule-patterns/4678#DOMAIN08/components/121756,DOMAIN08/rule-patterns/4678#DOMAIN08/components/12875
-SET CMD_VIOLATIONSFILTER=
-::SET CMD_VIOLATIONSFILTER=-violationsfilter "%VIOLATIONSFILTER%"
-
 
 :: Create exclusion requests, for all selected violations
 ::SET CREATEEXCLUSIONS=false
-SET CMD_CREATEEXCLUSIONS=
-::SET CMD_CREATEEXCLUSIONS=-createexclusions "%CREATEEXCLUSIONS%"
 
 :: Add the violations to the action plan, for all selected violations
 ::SET CREATEACTIONPLANS=false
-SET CMD_CREATEACTIONPLANS=
-::SET CMD_CREATEACTIONPLANS=-createactionplans "%CREATEACTIONPLANS%"
 
 :: Action plan tag, for action plan creation
 ::SET ACTIONPLANINPUTTAG=high
-SET CMD_ACTIONPLANINPUTTAG=
-::SET CMD_ACTIONPLANINPUTTAG=-actionplaninputtag "%ACTIONPLANINPUTTAG%"
-
-
 
 :: Comment, for action plan or exclusion request creation
 ::SET COMMENT=This is an action plan generated/
-SET CMD_COMMENT=
-::SET CMD_COMMENT=-comment "%COMMENT%"
-
 
 :: Outputextension : csv|xlsx, default = csv
 ::SET OUTPUTEXTENSION=csv
-SET CMD_OUTPUTEXTENSION=
-::SET CMD_OUTPUTEXTENSION=-outputextension "%OUTPUTEXTENSION%"
+
+
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+REM Build the command line
+SET CMD="%PYTHONCMD%" "%~dp0violation_extraction.py" 
+
+IF DEFINED RESTAPIURL 				SET CMD=%CMD% -restapiurl "%RESTAPIURL%"
+IF DEFINED EDURL					SET CMD=%CMD% -edurl "%EDURL%"
+
+IF NOT DEFINED USER 				SET USER=N/A
+IF NOT DEFINED PASSWORD 			SET PASSWORD=N/A
+IF NOT DEFINED APIKEY 				SET APIKEY=N/A
+SET CMD=%CMD% -user "%USER%" -password "%PASSWORD%" -apikey "%APIKEY%"
+
+SET CURRENTFOLDER=%~dp0
+:: remove trailing \
+SET CURRENTFOLDER=%CURRENTFOLDER:~0,-1%
+
+SET OUTPUTFOLDER=%CURRENTFOLDER%
+
+SET LOGFILE=%CURRENTFOLDER%\violation_data_extraction.log
+IF DEFINED LOGFILE					SET CMD=%CMD% -log "%LOGFILE%"
+IF DEFINED OUTPUTFOLDER 			SET CMD=%CMD% -of "%OUTPUTFOLDER%"
+
+SET EXTENSIONINSTALLATIONFOLDER=%CURRENTFOLDER%
+SET CMD=%CMD% -extensioninstallationfolder "%EXTENSIONINSTALLATIONFOLDER%"
+
+ECHO APPFILTER=%APPFILTER%
+IF DEFINED APPFILTER 				SET CMD=%CMD% -applicationfilter "%APPFILTER%"
+IF DEFINED DETAILLEVEL				SET CMD=%CMD% -detaillevel "%DETAILLEVEL%"
+IF DEFINED CRITICALONLYFILTER		SET CMD=%CMD% -criticalrulesonlyfilter "%CRITICALONLYFILTER%"
+IF DEFINED DISPLAYSOURCE			SET CMD=%CMD% -displaysource "%DISPLAYSOURCE%"
+
+IF DEFINED QRIDFILTER				SET CMD=%CMD% -qridfilter %QRIDFILTER%
+IF DEFINED QRNAMEFILTER				SET CMD=%CMD% -qrnamefilter "%QRNAMEFILTER%"
+IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
+IF DEFINED TECHNOFILTER				SET CMD=%CMD% -technofilter "%TECHNOFILTER%"
+IF DEFINED COMPONLOCATIONFILTER		SET CMD=%CMD% -componentnamelocationfilter "%COMPONLOCATIONFILTER%"
+IF DEFINED ACTIONPLANFILTER			SET CMD=%CMD% -actionplanfilter "%ACTIONPLANFILTER%"
+IF DEFINED EXCLUDEQUESTFILTER		SET CMD=%CMD% -exclusionrequestfilter "%EXCLUDEQUESTFILTER%"
+IF DEFINED VIOLATIONSTATUSFILTER	SET CMD=%CMD% -violationstatusfilter "%VIOLATIONSTATUSFILTER%"
+IF DEFINED COMPONSTATUSFILTER		SET CMD=%CMD% -componentstatusfilter "%COMPONSTATUSFILTER%"
+IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
+IF DEFINED PRIMINVALUEFILTER		SET CMD=%CMD% -priminvaluefilter "%PRIMINVALUEFILTER%"
+IF DEFINED COMPONENTSFILTER			SET CMD=%CMD% -componentsfilter "%COMPONENTSFILTER%"
+IF DEFINED VIOLATIONSFILTER			SET CMD=%CMD% -violationsfilter "%VIOLATIONSFILTER%"
+
+
+IF DEFINED CREATEEXCLUSIONS 		SET CMD=%CMD% -createexclusions "%CREATEEXCLUSIONS%"
+IF DEFINED CREATEACTIONPLANS		SET CMD=%CMD% -createactionplans "%CREATEACTIONPLANS%"
+IF DEFINED ACTIONPLANINPUTTAG		SET CMD=%CMD% -actionplaninputtag "%ACTIONPLANINPUTTAG%"
+IF DEFINED COMMENT					SET CMD=%CMD% -comment "%COMMENT%"
+IF DEFINED OUTPUTEXTENSION			SET CMD=%CMD% -outputextension "%OUTPUTEXTENSION%"
 
 :: Max nbRows for the Rest API calls
 ::SET NBROWS=100000000
-SET CMD_NBROWS=
-::SET CMD_NBROWS=-nbrows "%NBROWS%"
-
-:: Display the source code in violation in the csv file : true|false, default = false
-::SET DISPLAYSOURCE=true
-SET CMD_DISPLAYSOURCE=
-::SET CMD_DISPLAYSOURCE=-displaysource "%DISPLAYSOURCE%"
+IF DEFINED CMD_NBROWS				SET CMD=%CMD% -nbrows "%CMD_NBROWS%"
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
 ECHO Running the command line 
-SET CMD="%PYTHONPATH%\python" "%~dp0violation_extraction.py" %CMD_RESTAPIURL% %CMD_EDURL% %CMD_USER% %CMD_PASSWORD% %CMD_APIKEY% %CMD_LOGFILE% %CMD_OUTPUTFOLDER% %CMD_APPFILTER% %CMD_QRIDFILTER% %CMD_QRNAMEFILTER% %CMD_COMPONLOCATIONFILTER% %CMD_ACTIONPLANFILTER% %CMD_EXCLUREQUESTFILTER% %CMD_CRITICALONLYFILTER% %CMD_VIOLATIONSTATUSFILTER% %CMD_COMPONSTATUSFILTER% %CMD_BCFILTER% %CMD_PRIMINVALUEFILTER% %CMD_TECHNOFILTER% %CMD_COMPONENTSFILTER% %CMD_VIOLATIONSFILTER% %CMD_CREATEEXCLUSIONS% %CMD_CREATEACTIONPLANS% %CMD_ACTIONPLANINPUTTAG% %CMD_COMMENT% %CMD_DETAILLEVEL% %CMD_CSVFILE% %CMD_NBROWS% %CMD_DISPLAYSOURCE% %CMD_OUTPUTEXTENSION% %CMD_EXTENSIONINSTALLATIONFOLDER%
 ECHO %CMD%
 %CMD%
 SET RETURNCODE=%ERRORLEVEL%
 ECHO RETURNCODE %RETURNCODE% 
+
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 PAUSE

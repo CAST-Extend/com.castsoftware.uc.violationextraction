@@ -8,11 +8,14 @@ import traceback
 import time
 import csv
 import xml.etree.ElementTree as ET
+import os
 
 import pandas as pd
 from io import StringIO
 import xlsxwriter
-from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation
+from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation, ViolationFilter
+from model.modelclasses import ArchitectureModel, Property, Layer, Criteria
+from model import metamodel
 
 '''
  Author : MMR
@@ -61,6 +64,8 @@ def init_parse_argument():
     requiredNamed.add_argument('-loglevel', required=False, dest='loglevel', help='Log level (INFO|DEBUG) default = INFO')
     requiredNamed.add_argument('-nbrows', required=False, dest='nbrows', help='max number of rows extracted from the rest API, default = 1000000000')
     requiredNamed.add_argument('-extensioninstallationfolder', required=False, dest='extensioninstallationfolder', help='extension installation folder')    
+    
+    requiredNamed.add_argument('-generate_ac_model', required=False, dest='generate_ac_model', help='Generate architecture model for QR violations')
     
     return parser
 ########################################################################
@@ -144,7 +149,8 @@ if __name__ == '__main__':
     log = 'violation_extraction.log'
     if args.log != None:
         log = args.log
-    outputfolder = args.outputfolder 
+    outputfolder = args.outputfolder
+
 
     # new params
     applicationfilter = args.applicationfilter
@@ -187,6 +193,10 @@ if __name__ == '__main__':
     detaillevel = 'Intermediate'
     if args.detaillevel != None and (args.detaillevel == 'Simple' or args.detaillevel == 'Intermediate' or args.detaillevel == 'Full'):
         detaillevel = args.detaillevel
+    
+    generate_ac_model = False
+    if args.generate_ac_model  != None and (args.generate_ac_model == 'True' or args.generate_ac_model == 'true'):
+        generate_ac_model = True
     
     outputextension = 'csv'
     if args.outputextension != None:
@@ -319,9 +329,15 @@ if __name__ == '__main__':
         logger.info('host='+host)
         logger.info('protocol='+protocol)
         logger.info('warname='+str(warname))
-        logger.info('usr='+str(user))
-        logger.info('pwd=*******')
-        logger.info('apikey='+str(apikey))
+        logger.info('user='+str(user))
+        if password == None or password == "N/A":
+            logger.info('password=' + password)
+        else: 
+            logger.info('password=*******')
+        if apikey == None or apikey== "N/A":
+            logger.info('apikey='+str(apikey))
+        else:
+            logger.info('pwd=*******') 
         LogUtils.loginfo(logger,'log file='+log,True)
         logger.info('log level='+loglevel)
         logger.info('applicationfilter='+str(applicationfilter))
@@ -346,6 +362,7 @@ if __name__ == '__main__':
         logger.info('outputextension='+str(outputextension))
         logger.info('displaysource='+str(displaysource))
         logger.info('output folder='+str(outputfolder))
+        
         logger.info('bload_all_data='+str(bload_all_data))
         logger.info('bload_objectviolation_metrics='+str(bload_objectviolation_metrics))
         logger.info('bload_rule_pattern='+str(bload_rule_pattern))
@@ -356,31 +373,29 @@ if __name__ == '__main__':
         logger.info('bload_serverdetail='+str(bload_serverdetail))
         logger.info('bload_quality_model='+str(bload_quality_model))
         
+        # create output folders, when required
+        if outputfolder != None and not os.path.exists(outputfolder):
+            os.makedirs(outputfolder)
+        logfolder = os.path.basename(log)
+        logger.info('log folder='+str(logfolder))
+        if logfolder != None and logfolder != outputfolder and not os.path.isfile(logfolder) and not os.path.exists(logfolder):
+            try:
+                os.makedirs(logfolder)
+            except PermissionError:
+                None
+        
         logger.info('********************************************') 
-        rest_utils = RestUtils(logger, restapiurl, user, password, apikey)
+        rest_utils = RestUtils(logger, restapiurl, RestUtils.CLIENT_REQUESTS, user, password, apikey)
         rest_utils.open_session()
-        rest_service = AIPRestAPI(rest_utils) 
+        rest_service_aip = AIPRestAPI(rest_utils) 
     
         LogUtils.loginfo(logger,'Initialization',True)
         # few checks on the server
-        json_server = None
-        if not bload_serverdetail:
-            logger.debug("NOT loading the server detail")
-        else: 
-            json_server = rest_service.get_server()
-            
-        if json_server != None:
-            logger.info('server status=' + json_server['status'])    
-            servversion = json_server['version']
-            logger.info('server version=' + servversion)
-            #servversion2digits = servversion[-4:] 
-            #if float(servversion2digits) <= 1.13 : 
-            #    None
-            logger.info('server memory (free)=' + str(json_server['memory']['freeMemory']))
-            logger.info('********************************************')    
+        server = rest_service_aip.get_server()
+        if server != None: logger.info('server version=%s, memory (free)=%s' % (str(server.version), str(server.freememory)))
         
         # retrieve the domains & the applications in those domains 
-        json_domains = rest_service.get_domains()
+        json_domains = rest_service_aip.get_domains_json()
         if json_domains != None:
             idomain = 0
             for item in json_domains:
@@ -394,7 +409,7 @@ if __name__ == '__main__':
                 LogUtils.loginfo(logger,"Domain " + domain + " | progress:" + str(idomain) + "/" + str(len(json_domains)),True)
                 # only engineering domains
                 if domain != 'AAD':  #and domain == 'AED_AYYILDIZ':
-                    json_apps = rest_service.get_applications(domain)
+                    json_apps = rest_service_aip.get_applications_json(domain)
                     applicationid = -1
                     appHref = ''
                     appName = ''
@@ -433,10 +448,11 @@ if __name__ == '__main__':
                                     LogUtils.logerror(logger,'File %s is locked, aborting for application %s' % (fpath,appName),True)
                                     continue
                             # snapshot list
-                            json_snapshots = rest_service.get_application_snapshots(domain, applicationid)
+                            json_snapshots = rest_service_aip.get_application_snapshots_json(domain, applicationid)
                             if json_snapshots != None:
                                 for snap in json_snapshots:
                                     csvdata = []
+                                    
                                     outputdata = ''
                                     snapHref = ''
                                     snapshotid = -1
@@ -457,7 +473,7 @@ if __name__ == '__main__':
                                     ###################################################################
                                     # Number of violations / snapshots
                                     LogUtils.loginfo(logger,'Initialization (step 1/6) - Number of violations',True)
-                                    json_tot_violations = rest_service.get_total_number_violations(domain, applicationid, snapshotid)
+                                    json_tot_violations = rest_service_aip.get_total_number_violations_json(domain, applicationid, snapshotid)
                                     intotalviol = -1
                                     intotalcritviol = -1
                                     if (json_tot_violations != None):
@@ -478,7 +494,7 @@ if __name__ == '__main__':
                                     if not bload_quality_model:
                                         logger.info("NOT Extracting the snapshot quality model")                                           
                                     else:
-                                        json_snapshot_quality_model = rest_service.get_snapshot_tqi_quality_model(domain, snapshotid)
+                                        json_snapshot_quality_model = rest_service_aip.get_snapshot_tqi_quality_model_json(domain, snapshotid)
                                     if json_snapshot_quality_model != None:
                                         for qmitem in json_snapshot_quality_model:
                                             maxWeight = -1
@@ -506,7 +522,7 @@ if __name__ == '__main__':
                                     if not bload_bc_tch_mapping:
                                         logger.info("NOT Extracting the snapshot business criteria => technical criteria mapping")                                          
                                     else:    
-                                        mapbctc = rest_service.initialize_bc_tch_mapping(domain, applicationid, snapshotid, bcids)
+                                        mapbctc = rest_service_aip.initialize_bc_tch_mapping(domain, applicationid, snapshotid, bcids)
                                     
                                     ###################################################################
                                     # Components PRI
@@ -519,10 +535,10 @@ if __name__ == '__main__':
                                     else: 
                                         if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                             try : 
-                                                comppri = rest_service.initialize_components_pri(domain, applicationid, snapshotid, bcids,nbrows)
+                                                comppri = rest_service_aip.initialize_components_pri(domain, applicationid, snapshotid, bcids,nbrows)
                                             except ValueError:
                                                 None
-                                            transactionlist = rest_service.init_transactions(domain, applicationid, snapshotid, criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
+                                            transactionlist = rest_service_aip.init_transactions(domain, applicationid, snapshotid, criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
                                     
                                     ###################################################################
                                     LogUtils.loginfo(logger,'Initialization (step 5/6) - Distributions',True)
@@ -532,7 +548,7 @@ if __name__ == '__main__':
                                     else: 
                                         if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                             try : 
-                                                dictdistributions = rest_service.get_distributions_details(domain, applicationid, snapshotid, nbrows)
+                                                dictdistributions = rest_service_aip.get_distributions_details(domain, applicationid, snapshotid, nbrows)
                                             except:
                                                 LogUtils.logwarning(logger, 'Error extracting the distributions', True)
                                     ###################################################################
@@ -546,10 +562,17 @@ if __name__ == '__main__':
                                     LogUtils.loginfo(logger, 'Initialization (step 6/6) - Quality metrics results',True)
                                     # quality rules details (nb violations, % compliance)
                                     json_qr_results = None
+                                    
+                                    if generate_ac_model:
+                                        acmodel = ArchitectureModel(appName + ' quality-rules',appName + ' quality-rules.CASTArchitect', ArchitectureModel.TYPE_FORBIDDEN, 'JEE,SQL,HTML5,Cobol')
+                                        ac_model_content = {}
+                                    
                                     if not bload_qr_results:
                                         logger.info("NOT Extracting the quality metrics results")                                          
                                     else:    
-                                        json_qr_results = rest_service.get_qualitymetrics_results(domain, applicationid, criticalrulesonlyfilter, nbrows)
+                                        
+                                        #def get_qualitymetrics_results_json(self, domainname, applicationid, snapshotfilter, snapshotids, criticalonly,  modules=None, nbrows=10000000):
+                                        json_qr_results = rest_service_aip.get_qualitymetrics_results_json(domain, applicationid, '-1', None, criticalrulesonlyfilter, None, nbrows)
                                     if json_qr_results != None:
                                         for res in json_qr_results:
                                             for res2 in res['applicationResults']:
@@ -594,7 +617,9 @@ if __name__ == '__main__':
 
                                     LogUtils.loginfo(logger, 'Extracting violations',True)
                                     LogUtils.loginfo(logger, 'Loading violations & components data from the REST API',True)
-                                    json_violations = rest_service.get_snapshot_violations(domain, applicationid, snapshotid,  criticalrulesonlyfilter, violationstatusfilter, businesscriterionfilter, technofilter,nbrows)
+
+                                    violationfilter = ViolationFilter(criticalrulesonlyfilter, businesscriterionfilter, technofilter, None, qridfilter, qrnamefilter, nbrows)
+                                    json_violations = rest_service_aip.get_snapshot_violations_json(domain, applicationid, snapshotid, violationfilter)
                                     header = ''
                                     if json_violations != None:
                                         outputline = 'Application name;Date;Version;Count (Filter)'
@@ -665,7 +690,12 @@ if __name__ == '__main__':
                                                     objviol.qrcritical = str(qrdetails.get("critical"))
                                             except KeyError:
                                                 None
-                                                
+                                            
+                                            
+                                 
+                                    
+                                           
+                                            
                                             try:                                    
                                                 objviol.actionPlan = violation['remedialAction']
                                             except KeyError:
@@ -774,7 +804,7 @@ if __name__ == '__main__':
                                                     objViolationMetric = dicObjectViolationMetrics.get(componentHref)
                                                     #If cache is empty we load from the rest api 
                                                     if objViolationMetric == None:
-                                                        objViolationMetric = rest_service.get_objectviolation_metrics(componentHref)
+                                                        objViolationMetric = rest_service_aip.get_objectviolation_metrics(componentHref)
                                                         if objViolationMetric != None:
                                                             dicObjectViolationMetrics.update({componentHref:objViolationMetric})
                                                     else:
@@ -790,7 +820,7 @@ if __name__ == '__main__':
                                                     objRulePatternDetails = dictQualityPatternDetails.get(qrrulepatternhref)                                                    
                                                     #If cache is empty we load from the rest api
                                                     if objRulePatternDetails == None:
-                                                        objRulePatternDetails = rest_service.get_rule_pattern(qrrulepatternhref)
+                                                        objRulePatternDetails = rest_service_aip.get_rule_pattern(qrrulepatternhref)
                                                         if objRulePatternDetails != None:
                                                             dictQualityPatternDetails.update({qrrulepatternhref:objRulePatternDetails})
                                                     else:
@@ -820,7 +850,7 @@ if __name__ == '__main__':
                                             # we skip if the associated value contains a path that is not managed and can be very time consuming
                                             # for rules like Avoid indirect String concatenation inside loops (more than 1 mn per api call)
                                                 if not 'path' in associatedValueName.lower():
-                                                    json_findings = rest_service.get_objectviolation_findings(componentHref, objviol.qrid)
+                                                    json_findings = rest_service_aip.get_objectviolation_findings_json(componentHref, objviol.qrid)
                                                 
                                                 if json_findings != None: 
                                                     fin_name = json_findings['name']
@@ -894,7 +924,7 @@ if __name__ == '__main__':
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
                                             if displaysource: 
                                                 if sourceCodesHref != None:
-                                                    json_sourcescode = rest_service.get_sourcecode(sourceCodesHref)
+                                                    json_sourcescode = rest_service_aip.get_sourcecode_json(sourceCodesHref)
                                                     if json_sourcescode != None:
                                                         for src in json_sourcescode:
                                                             filereference = ''
@@ -916,10 +946,10 @@ if __name__ == '__main__':
                                                             if srcstartline >= 0 and srcendline >= 0:
                                                                 filereference += ': lines ' + str(srcstartline) + ' => ' +str(srcendline)
                                                             srcCodeReference.append(filereference)
-                                                            partialfiletxt = rest_service.get_sourcecode_file(filehref, srcstartline, srcendline)
+                                                            partialfiletxt = rest_service_aip.get_sourcecode_file_json(filehref, srcstartline, srcendline)
                                                             if partialfiletxt == None:
                                                                 logger.info("Second try without the line numbers")
-                                                                partialfiletxt = rest_service.get_sourcecode_file(filehref, None, None)
+                                                                partialfiletxt = rest_service_aip.get_sourcecode_file_json(filehref, None, None)
                                                                 if partialfiletxt != None:
                                                                     logger.info("Second try worked")
                                                             if partialfiletxt == None:
@@ -934,8 +964,6 @@ if __name__ == '__main__':
                                                                         filelines = partialfiletxt.split("\n")
                                                                         iline = srcstartline
                                                                         for line in filelines:
-                                                                            if iline == 1487: 
-                                                                                None
                                                                             # add line number and remove ; characters from the code
                                                                             filewithlinesnumber += str(iline) + ' ' +  line.replace(";", "<#>") + '\n'
                                                                             iline += 1
@@ -977,6 +1005,17 @@ if __name__ == '__main__':
 
                                             outputline += ";" + str(objViolationMetric.componentType) + ";" + str(objviol.componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
                                             outputline += ";" + str(technicalcriteriaidandnames)
+                                            
+                                            ##############################
+                                            # update the architecture model     
+                                            if generate_ac_model and detaillevel == 'Full' and objViolationMetric.componentType != None and objviol.componentNameLocation != None:
+                                                set_name = "set-" + objviol.qrname.replace("\"","")
+                                                str_type = metamodel.get_metamodel_type(logger, objViolationMetric.componentType)
+                                                if ac_model_content.get(set_name) == None:
+                                                    ac_model_content[set_name] = {"set":set_name, "types":{}}
+                                                if ac_model_content[set_name].get("types").get(str_type) == None:
+                                                    ac_model_content[set_name]["types"][str_type] = []
+                                                ac_model_content[set_name]["types"][str_type].append(objviol.componentNameLocation)
                                             #
                                             strlistbc = ''
                                             #mapbctc
@@ -1368,19 +1407,40 @@ if __name__ == '__main__':
                                             #########################################################################
                                         json_violations = None
 
+                                    # generate model file
+                                    if generate_ac_model and detaillevel == 'Full':
+                                        logger.info("Creating file %s"  + acmodel.filename)
+                                        for set_name in ac_model_content:
+                                            s=Layer(set_name, Layer.TYPE_SET, False)
+                                            i_index = 0
+                                            for str_type in ac_model_content[set_name]["types"]:
+                                                i_index += 1
+                                                if i_index == 1:
+                                                    crit=Criteria(Criteria.TYPE_SELECTION_CRITERIA, False, False)
+                                                else:
+                                                    crit=Criteria(Criteria.TYPE_OR, False, False)
+                                                
+                                                p_type=Property(Property.NAME_TYPE,Property.OP_EQUALS,[str_type])
+                                                crit.add_property(p_type)
+                                                p_name=Property(Property.NAME_FULLNAME,Property.OP_EQUALS,ac_model_content[set_name]["types"][str_type])
+                                                crit.add_property(p_name)
+    
+                                                s.add_criteria(crit)
+                                            acmodel.add_layer(s)
+                                        acmodel.generate_model()
                                     #########################################################################
 
                                     #TODO: change to requests lib - exclusion 
                                     if createexclusions and json_new_scheduledexclusions != None and len(json_new_scheduledexclusions) > 0:
                                         logger.info("Creating "  + str(len(json_new_scheduledexclusions)) + " new exclusions : " + str(json_new_scheduledexclusions))
-                                        rest_service.create_scheduledexclusions(domain, applicationid,snapshotid, json_new_scheduledexclusions)
+                                        rest_service_aip.create_scheduledexclusions(domain, applicationid,snapshotid, json_new_scheduledexclusions)
                                     else:
                                         logger.info("No exclusion created")
                                         
                                     #TODO: change to requests lib - action plan
                                     if createactionplans and json_new_actionplans != None:
                                         logger.info("Creating "  + str(len(json_new_actionplans)) + "action plan items " + str(json_new_actionplans))
-                                        rest_service.create_actionplans(domain, applicationid,snapshotid, json_new_actionplans)
+                                        rest_service_aip.create_actionplans(domain, applicationid,snapshotid, json_new_actionplans)
                                     else:
                                         logger.info("No action plan created")                                    
                                     

@@ -4,3 +4,7 @@
 *.[cC][sS][vV]
 /utils/
 pycache__
+/model/__init__.py
+/model/__pycache__/__init__.cpython-37.pyc
+/model/__pycache__/metamodel.cpython-37.pyc
+/model/__pycache__/modelclasses.cpython-37.pyc

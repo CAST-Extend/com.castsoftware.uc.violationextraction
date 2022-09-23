@@ -3,7 +3,7 @@
   <metadata>
     <id>com.castsoftware.uc.violationextraction</id>
     <version>1.1.0</version>
-    <title>Violation report & automated action plan/exclusion injection</title>
+    <title>Violation report and automated action plan/exclusion injection</title>
     <authors>User Community</authors>
     <owners>CAST</owners>
     <projectUrl>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki</projectUrl>

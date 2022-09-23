@@ -13,7 +13,8 @@ import os
 import pandas as pd
 from io import StringIO
 import xlsxwriter
-from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation, ViolationFilter
+from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation, ViolationFilter,\
+    ViolationOutput, QualityStandard, Metric
 from model.modelclasses import ArchitectureModel, Property, Layer, Criteria
 from model import metamodel
 
@@ -58,6 +59,10 @@ def init_parse_argument():
     requiredNamed.add_argument('-createactionplans', required=False, dest='createactionplans', help='Create actions plans with the violations selected/filtered (True|False) default = False')
     requiredNamed.add_argument('-actionplaninputtag', required=False, dest='actionplaninputtag', help='Actions plans tags')
     requiredNamed.add_argument('-comment', required=False, dest='comment', help='Exclusion/Action plan comment')
+    
+    requiredNamed.add_argument('-automatedactionplan_create', required=False, dest='automatedactionplan_create', help='Create automated actions plan')
+    requiredNamed.add_argument('-automatedactionplan_maxnumber', required=False, dest='automatedactionplan_maxnumber', help='Max num of action plan items to create')
+    
     
     requiredNamed.add_argument('-detaillevel', required=False, dest='detaillevel', help='Report detail level (Simple|Intermediate|Full) default = Intermediate')
     requiredNamed.add_argument('-outputextension', required=False, dest='outputextension', help='Output file (xlsx|csv) default = csv')
@@ -124,7 +129,26 @@ def get_filepath(outputfolder, appName, outputextension, ):
     fpath += appName + "_violations." + outputextension
     return fpath 
 
+########################################################################
 
+def add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap):
+    if qrid in set_qr_already_processed:
+        LogUtils.loginfo(logger, "  Quality ryle already %s, skipping it " % str(qrid), False)
+        return
+
+    if dic_violations_by_qualityrule.get(qrid) != None:
+        for componentid in dic_violations_by_qualityrule[qrid]:
+            if i_violations_processed < automatedactionplan_maxnumber:
+                i_violations_processed += 1
+                cur_violation = dic_violations_by_qualityrule[qrid][componentid]
+                if not cur_violation.violation.hasActionPlan:  
+                    list_violations_to_add_to_ap.append(cur_violation)
+                    LogUtils.loginfo(logger, "    +" + str(i_violations_processed) + " Adding violation to automated ap %s|%s (%s|%s pri=%s existing ap=%s) " % (str(qrid),str(componentid), str(cur_violation.violation.qrname), str(cur_violation.violation.componentNameLocation), str(cur_violation.pri_selected_bc), str(cur_violation.violation.hasActionPlan)), True)
+                else:
+                    LogUtils.loginfo(logger, "    +" + str(i_violations_processed) + " Not adding violation to automated ap, already in action plan ap %s|%s (%s|%s pri=%s existing ap=%s) " % (str(qrid),str(componentid), str(cur_violation.violation.qrname), str(cur_violation.violation.componentNameLocation), str(cur_violation.pri_selected_bc), str(cur_violation.violation.hasActionPlan)), True) 
+    
+    
+    return i_violations_processed, list_violations_to_add_to_ap
 ########################################################################
 if __name__ == '__main__':
 
@@ -184,10 +208,19 @@ if __name__ == '__main__':
     actionplaninputtag = 'moderate'
     if args.actionplaninputtag  != None:
         actionplaninputtag = args.actionplaninputtag            
+    
+    automatedactionplan_create = False
+    if args.automatedactionplan_create  != None and (args.automatedactionplan_create == 'True' or args.automatedactionplan_create == 'true'):
+        automatedactionplan_create = True        
+    
+    automatedactionplan_maxnumber = 10
+    if args.automatedactionplan_maxnumber  != None and args.automatedactionplan_maxnumber.isnumeric():
+        automatedactionplan_maxnumber = int(args.automatedactionplan_maxnumber)
+    
     comment = 'Default comment'
     if args.comment == None:
         if createexclusions: comment = 'Automated exclusion'
-        elif createactionplans: comment = 'Automated action plan'
+        elif createactionplans or automatedactionplan_create: comment = 'Automated action plan'
     elif args.comment  != None:
         comment = args.comment
     detaillevel = 'Intermediate'
@@ -363,6 +396,10 @@ if __name__ == '__main__':
         logger.info('displaysource='+str(displaysource))
         logger.info('output folder='+str(outputfolder))
         
+        logger.info('automatedactionplan_create='+str(automatedactionplan_create))
+        logger.info('automatedactionplan_maxnumber='+str(automatedactionplan_maxnumber))
+        
+        
         logger.info('bload_all_data='+str(bload_all_data))
         logger.info('bload_objectviolation_metrics='+str(bload_objectviolation_metrics))
         logger.info('bload_rule_pattern='+str(bload_rule_pattern))
@@ -533,11 +570,12 @@ if __name__ == '__main__':
                                     if not bload_components_pri:
                                         logger.info("NOT extracting the components PRI for the business criteria")
                                     else: 
-                                        if detaillevel == 'Intermediate' or detaillevel == 'Full':
+                                        if 1 == 1:
                                             try : 
                                                 comppri = rest_service_aip.initialize_components_pri(domain, applicationid, snapshotid, bcids,nbrows)
                                             except ValueError:
                                                 None
+                                        if detaillevel == 'Intermediate' or detaillevel == 'Full':
                                             transactionlist = rest_service_aip.init_transactions(domain, applicationid, snapshotid, criticalrulesonlyfilter, violationstatusfilter, technofilter,nbrows)
                                     
                                     ###################################################################
@@ -617,6 +655,8 @@ if __name__ == '__main__':
 
                                     LogUtils.loginfo(logger, 'Extracting violations',True)
                                     LogUtils.loginfo(logger, 'Loading violations & components data from the REST API',True)
+                                    list_outputviolations = []
+                                    dic_violations_by_qualityrule = {}
 
                                     violationfilter = ViolationFilter(criticalrulesonlyfilter, businesscriterionfilter, technofilter, None, qridfilter, qrnamefilter, nbrows)
                                     json_violations = rest_service_aip.get_snapshot_violations_json(domain, applicationid, snapshotid, violationfilter)
@@ -652,6 +692,8 @@ if __name__ == '__main__':
                                         dictQualityPatternDetails = {}
 
                                         lastProgressReported = None
+                                        
+                                        
                                         for violation in json_violations:
                                             iCouterRestAPIViolations += 1
                                             currentviolurl = ''
@@ -659,10 +701,15 @@ if __name__ == '__main__':
                                             imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
                                             if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
                                                 LogUtils.loginfo(logger, "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
-                                            objviol = Violation()      
+                                            objviol = Violation()
+                                            objviol_output = ViolationOutput() 
+                                            objviol_output.violation = objviol
+                                            objviol_output.inputcomment = comment
+                                            objviol_output.actionplaninputtag = actionplaninputtag 
                                             
                                             try:                                    
                                                 qrrulepatternhref = violation['rulePattern']['href']
+                                                objviol_output.qrrulepatternhref = qrrulepatternhref
                                             except KeyError:
                                                 qrrulepatternhref = None
                                                                                             
@@ -690,21 +737,19 @@ if __name__ == '__main__':
                                                     objviol.qrcritical = str(qrdetails.get("critical"))
                                             except KeyError:
                                                 None
-                                            
-                                            
-                                 
-                                    
                                            
                                             
                                             try:                                    
                                                 objviol.actionPlan = violation['remedialAction']
+                                                if objviol.actionPlan != None:
+                                                    objviol.hasActionPlan = True
                                             except KeyError:
-                                                objviol.actionPlan = None
+                                                objviol.hasActionPlan = None
                                             # filter the violations already in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and objviol.actionPlan == None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and objviol.hasActionPlan == None:
                                                 continue
                                             # filter the violations not in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and objviol.actionPlan != None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and objviol.hasActionPlan != None:
                                                 continue
                                                 
                                             try:                                    
@@ -724,6 +769,7 @@ if __name__ == '__main__':
                                                 violationsStatus = None
                                             try:
                                                 componentHref = violation['component']['href']
+                                                objviol_output.componentHref = componentHref
                                             except KeyError:
                                                 componentHref = None
 
@@ -992,25 +1038,46 @@ if __name__ == '__main__':
                                             # building the reporting
                                             iCounterFilteredViolations += 1
                                             strprogress = str(iCounterFilteredViolations) + "/" + str(violations_size) + "/" + str(intotalviol)
-                                            strtotalviol = str(intotalviol)[:-2]
-                                            strtotalcritviol = str(intotalcritviol)[:-2]
+                                            objviol_output.appName = appName
+                                            objviol_output.snapshotdate = snapshotdate 
+                                            objviol_output.snapshotversion = snapshotversion
+                                            objviol_output.iCounterFilteredViolations = iCounterFilteredViolations
+                                            objviol_output.totalviol = str(intotalviol)[:-2]
+                                            objviol_output.totalcritviol = str(intotalcritviol)[:-2]
+                                            
                                             objViolationMetric = dicObjectViolationMetrics.get(componentHref)
+                                            objviol_output.violation_metrics = objViolationMetric
                                             if objViolationMetric == None:
                                                 objViolationMetric = ObjectViolationMetric() 
-                                            outputline = appName + ";" + str(snapshotdate) + ";" + str(snapshotversion) +  ";" + str(iCounterFilteredViolations) 
+                                            objviol_output.violation_metrics = objViolationMetric
+                                            objviol_output.maxWeight = qrdetails.get('maxWeight')
+                                            objviol_output.compoundedWeight = qrdetails.get('compoundedWeight')
+                                            objviol_output.compoundedWeightFormula = qrdetails.get('compoundedWeightFormula')
+                                            
+                                            objviol_output.failedchecks = qrdetails.get('failedchecks')
+                                            objviol_output.ratio = qrdetails.get('ratio')    
+                                            objviol_output.addedViolations = qrdetails.get('addedViolations')
+                                            objviol_output.removedViolations = qrdetails.get('removedViolations')  
+                                            objviol_output.violationsStatus = violationsStatus
+                                            objviol_output.componentStatus = componentStatus
+                                            objviol_output.associatedvaluelabel = associatedvaluelabel
+                                            objviol_output.associatedvalue = associatedvalue
+                                            objviol_output.technicalcriteriaidandnames = technicalcriteriaidandnames
+                                                         
+                                            outputline = objviol_output.appName + ";" + str(objviol_output.snapshotdate) + ";" + str(objviol_output.snapshotversion) +  ";" + str(objviol_output.iCounterFilteredViolations) 
                                             #outputline +=  ";" + str(iCouterRestAPIViolations)  +  ";" + str(violations_size) + 
-                                            outputline +=  ";" + strtotalcritviol + ";" + strtotalviol 
-                                            outputline += ";" + str(objviol.qrid)+ ";" + str(objviol.qrname) + ";" +  str(objviol.qrcritical) + ";" + str(qrdetails.get('maxWeight')) + ";" + str(qrdetails.get('compoundedWeight')) + ";" + qrdetails.get('compoundedWeightFormula') 
-                                            outputline += ";" + str(qrdetails.get('failedchecks')) + ";" + str(qrdetails.get('ratio')) + ";" + str(qrdetails.get('addedViolations')) + ";" + str(qrdetails.get('removedViolations'))
+                                            outputline +=  ";" + str(objviol_output.totalcritviol) + ";" + str(objviol_output.totalviol) 
+                                            outputline += ";" + str(objviol_output.violation.qrid)+ ";" + str(objviol_output.violation.qrname) + ";" +  str(objviol_output.violation.qrcritical) + ";" + str(objviol_output.maxWeight) + ";" + str(objviol_output.compoundedWeight) + ";" + objviol_output.compoundedWeightFormula 
+                                            outputline += ";" + str(objviol_output.failedchecks) + ";" + str(objviol_output.ratio) + ";" + str(objviol_output.addedViolations) + ";" + str(objviol_output.removedViolations)
 
-                                            outputline += ";" + str(objViolationMetric.componentType) + ";" + str(objviol.componentNameLocation) + ";"+ str(violationsStatus) + ";" + str(componentStatus) + ";" + str(associatedvaluelabel)+ ";" +  str(associatedvalue)
-                                            outputline += ";" + str(technicalcriteriaidandnames)
+                                            outputline += ";" + str(objviol_output.violation_metrics.componentType) + ";" + str(objviol_output.violation.componentNameLocation) + ";"+ str(objviol_output.violationsStatus) + ";" + str(objviol_output.componentStatus) + ";" + str(objviol_output.associatedvaluelabel)+ ";" +  str(objviol_output.associatedvalue)
+                                            outputline += ";" + str(objviol_output.technicalcriteriaidandnames)
                                             
                                             ##############################
                                             # update the architecture model     
-                                            if generate_ac_model and detaillevel == 'Full' and objViolationMetric.componentType != None and objviol.componentNameLocation != None:
+                                            if generate_ac_model and detaillevel == 'Full' and objviol_output.violation_metrics.componentType != None and objviol.componentNameLocation != None:
                                                 set_name = "set-" + objviol.qrname.replace("\"","")
-                                                str_type = metamodel.get_metamodel_type(logger, objViolationMetric.componentType)
+                                                str_type = metamodel.get_metamodel_type(logger, objviol_output.violation_metrics.componentType)
                                                 if ac_model_content.get(set_name) == None:
                                                     ac_model_content[set_name] = {"set":set_name, "types":{}}
                                                 if ac_model_content[set_name].get("types").get(str_type) == None:
@@ -1038,17 +1105,20 @@ if __name__ == '__main__':
                                                                 if bcid == "60012": 
                                                                     strlistbc = strlistbc + '60012#Changeability,'
                                             if strlistbc != '': strlistbc = strlistbc[:-1]
-                                            outputline += ";" + strlistbc
-                                            outputline += ";" + str(strqualitystandards)
+                                            objviol_output.strlistbc = strlistbc
+                                            outputline += ";" + objviol_output.strlistbc
+                                            objviol_output.strqualitystandards = strqualitystandards
+                                            outputline += ";" + str(objviol_output.strqualitystandards)
                                                                                                                                                                                                                                         
                                             #########################################################################
                                             # current PRI focus
                                             outputline += ";"
                                             
                                             if propagationRiskIndex != None: 
-                                                outputline += str(propagationRiskIndex)
+                                                objviol_output.pri_selected_bc = str(propagationRiskIndex)
                                             else: 
-                                                outputline += 'No BC selected'
+                                                objviol_output.pri_selected_bc = 'No BC selected'
+                                            outputline += objviol_output.pri_selected_bc
                                             # PRI Security
                                             outputline += ";"
                                             pri = '<Not extracted>'
@@ -1057,7 +1127,8 @@ if __name__ == '__main__':
                                                     pri = str(comppri.get("60016").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            outputline += StringUtils.NonetoEmptyString(pri)
+                                            objviol_output.pri_security = StringUtils.NonetoEmptyString(pri)
+                                            outputline += objviol_output.pri_security
                                             # PRI Efficiency
                                             outputline += ";"
                                             pri = '<Not extracted>'
@@ -1066,7 +1137,8 @@ if __name__ == '__main__':
                                                     pri = str(comppri.get("60014").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            outputline += StringUtils.NonetoEmptyString(pri)
+                                            objviol_output.pri_efficiency = StringUtils.NonetoEmptyString(pri)
+                                            outputline += objviol_output.pri_efficiency
                                             # PRI Robusustness
                                             outputline += ";"
                                             pri = '<Not extracted>'
@@ -1075,7 +1147,8 @@ if __name__ == '__main__':
                                                     pri = str(comppri.get("60013").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            outputline += StringUtils.NonetoEmptyString(pri)         
+                                            objviol_output.pri_robustness = StringUtils.NonetoEmptyString(pri)
+                                            outputline += objviol_output.pri_robustness          
                                             # PRI Transferability
                                             outputline += ";"
                                             pri = '<Not extracted>'
@@ -1084,7 +1157,8 @@ if __name__ == '__main__':
                                                     pri = str(comppri.get("60011").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            outputline += StringUtils.NonetoEmptyString(pri)    
+                                            objviol_output.pri_transferability = StringUtils.NonetoEmptyString(pri)
+                                            outputline += objviol_output.pri_transferability     
                                             # PRI Changeability
                                             outputline += ";"
                                             pri = '<Not extracted>'
@@ -1093,16 +1167,18 @@ if __name__ == '__main__':
                                                     pri = str(comppri.get("60012").get(objviol.componentid))
                                             except KeyError:
                                                 None
-                                            outputline += StringUtils.NonetoEmptyString(pri)
+                                            objviol_output.pri_changeability = StringUtils.NonetoEmptyString(pri)
+                                            outputline += objviol_output.pri_changeability 
+                                            
                                             #########################################################################  
                                             # TQI - Number of transactions & transactions list
                                             outputline += ";" 
-                                            numtrans = 0
-                                            strtrans = '<Not extracted>'
+                                            objviol_output.transactions_number = 0
+                                            objviol_output.transactions_list = '<Not extracted>'
                                             try:
                                                 bctrans = transactionlist.get("60017") 
                                                 if bctrans != None:
-                                                    strtrans = ''
+                                                    objviol_output.transactions_list = ''
                                                     for trans in bctrans:
                                                         tobeadded = False
                                                         for comp in trans.get("componentsWithViolations"):
@@ -1111,16 +1187,16 @@ if __name__ == '__main__':
                                                                 tobeadded = True
                                                                 break
                                                         if tobeadded:
-                                                            strtrans += trans.get("name") + ','
-                                                            numtrans+=1
+                                                            objviol_output.transactions_list += trans.get("name") + ','
+                                                            objviol_output.transactions_number+=1
                                                         #trans.get("transactionRiskIndex")
-                                                    if strtrans != '': strtrans = strtrans[:-1]
+                                                    if objviol_output.transactions_list != '': objviol_output.transactions_list = objviol_output.transactions_list[:-1]
                                             except KeyError:
                                                 None
-                                            if strtrans != "<Not extracted>": 
-                                                outputline += str(numtrans)
+                                            if objviol_output.transactions_list != "<Not extracted>": 
+                                                outputline += str(objviol_output.transactions_number)
                                             outputline += ";"
-                                            outputline += strtrans
+                                            outputline += objviol_output.transactions_list
 
                                             # Effiency - Number of transactions & transactions list & TRI
                                             outputline += ";" 
@@ -1148,6 +1224,9 @@ if __name__ == '__main__':
                                                     if strtrans != '': strtrans = strtrans[:-1]
                                             except KeyError:
                                                 None
+                                            objviol_output.transactions_efficiency_number = numtrans
+                                            objviol_output.transactions_efficiency_tri = strtrans
+                                            objviol_output.transactions_efficiency_maxtri = maxtri
                                             if strtrans != "<Not extracted>": 
                                                 outputline += str(numtrans)
                                             outputline += ";" + str(maxtri)                                            
@@ -1179,6 +1258,9 @@ if __name__ == '__main__':
                                                     if strtrans != '': strtrans = strtrans[:-1]
                                             except KeyError:
                                                 None
+                                            objviol_output.transactions_robustness_number = numtrans
+                                            objviol_output.transactions_robustness_tri = strtrans
+                                            objviol_output.transactions_robustness_maxtri = maxtri                                                
                                             if strtrans != "<Not extracted>": 
                                                 outputline += str(numtrans)
                                             outputline += ";" + str(maxtri)                                            
@@ -1211,6 +1293,9 @@ if __name__ == '__main__':
                                                     if strtrans != '': strtrans = strtrans[:-1]
                                             except KeyError:
                                                 None
+                                            objviol_output.transactions_security_number = numtrans
+                                            objviol_output.transactions_security_tri = strtrans
+                                            objviol_output.transactions_security_maxtri = maxtri                                             
                                             if strtrans != "<Not extracted>": 
                                                 outputline += str(numtrans)
                                             outputline += ";" + str(maxtri)                                            
@@ -1224,7 +1309,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_cyclomaticcomplexity = strdist
                                             outputline += ';' + strdist
+
                                             # Cost complexity dist. 
                                             strdist = '<Not extracted>'
                                             try:
@@ -1232,7 +1319,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_costcomplexity = strdist
                                             outputline += ';' + strdist
+                                            
                                             # Fan-Out dist.
                                             strdist = '<Not extracted>'
                                             try:
@@ -1240,7 +1329,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_fanout = strdist
                                             outputline += ';' + strdist
+                                            
                                             # Fan-In dist
                                             strdist = '<Not extracted>'
                                             try:
@@ -1248,7 +1339,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_fanin = strdist
                                             outputline += ';' + strdist
+                                            
                                             # Size dist.
                                             strdist = '<Not extracted>'
                                             try:
@@ -1256,7 +1349,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_size =  strdist                                              
                                             outputline += ';' + strdist
+                                            
                                             # Coupling dist.
                                             strdist = '<Not extracted>'
                                             try:
@@ -1264,7 +1359,9 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_coupling =  strdist
                                             outputline += ';' + strdist                                            
+                                            
                                             # SQL complexity dist.
                                             strdist = '<Not extracted>'
                                             try:
@@ -1272,26 +1369,27 @@ if __name__ == '__main__':
                                                 if strdist == None: strdist = ''
                                             except:
                                                 None
+                                            objviol_output.distribution_sqlcomplexity =  strdist
                                             outputline += ';' + strdist                                             
                                             
                                             #########################################################################                                                                                                                              
                                             outputline += ";"
-                                            if objViolationMetric.criticalViolations != None: outputline += str(objViolationMetric.criticalViolations)
+                                            if objviol_output.violation_metrics.criticalViolations != None: outputline += str(objviol_output.violation_metrics.criticalViolations)
                                             outputline += ";"
-                                            if objViolationMetric.cyclomaticComplexity != None: outputline += str(objViolationMetric.cyclomaticComplexity)
+                                            if objviol_output.violation_metrics.cyclomaticComplexity != None: outputline += str(objviol_output.violation_metrics.cyclomaticComplexity)
                                             outputline += ";"
-                                            if objViolationMetric.codeLines != None: outputline += str(objViolationMetric.codeLines)
+                                            if objviol_output.violation_metrics.codeLines != None: outputline += str(objviol_output.violation_metrics.codeLines)
                                             outputline += ";"
-                                            if objViolationMetric.commentLines != None: outputline += str(objViolationMetric.commentLines)
+                                            if objviol_output.violation_metrics.commentLines != None: outputline += str(objviol_output.violation_metrics.commentLines)
                                             outputline += ";"
-                                            if objViolationMetric.ratioCommentLinesCodeLines != None: outputline += str(objViolationMetric.ratioCommentLinesCodeLines)
+                                            if objviol_output.violation_metrics.ratioCommentLinesCodeLines != None: outputline += str(objviol_output.violation_metrics.ratioCommentLinesCodeLines)
     
                                             #########################################################################                                  
                                             
-                                            if objviol.actionPlan != None:
-                                                actionplanstatus = objviol.actionPlan['status']
-                                                actionplantag = objviol.actionPlan['tag']
-                                                actionplancomment = objviol.actionPlan['comment']
+                                            if objviol.hasActionPlan:
+                                                actionplanstatus = objviol_output.violation.actionPlan['status']
+                                                actionplantag = objviol_output.violation.actionPlan['tag']
+                                                actionplancomment = objviol_output.violation.actionPlan['comment']
                                                 # status
                                                 outputline += ";" + actionplanstatus 
                                                 # tag
@@ -1301,7 +1399,7 @@ if __name__ == '__main__':
                                             else:
                                                 outputline += ";;;" 
                                             if objviol.exclusionRequest != None:
-                                                exclusionRequest = objviol.exclusionRequest['comment']
+                                                exclusionRequest = objviol_output.violation.exclusionRequest['comment']
                                                 # Exclusion request exists
                                                 outputline += ";true"
                                                 # Exclusion request comment
@@ -1313,12 +1411,12 @@ if __name__ == '__main__':
                                             outputline += ";"+ strparams
                                             #########################################################################
                                             currentviolurl = ''
-                                            currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
-                                            currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
+                                            currentviolpartialurl= snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol_output.violation.qrid + '/' + objviol_output.violation.componentid
+                                            currentviolfullurl= rootedurl + '/engineering/index.html#' + snapHref + '/business/60017/qualityInvestigation/0/60017/' + firsttechnicalcriterionid + '/' + objviol_output.violation.qrid + '/' + objviol_output.violation.componentid
                                             currentviolurl = currentviolfullurl
                                             outputline += ";" + currentviolurl
                                             outputline += ";"+ str(qrrulepatternhref) + ";" + str(componentHref) + ";" +str(findingsHref)         
-                                            outputline += ";"+ objviol.violationid
+                                            outputline += ";"+ objviol_output.violation.violationid
                                             outputline += ";"+ strbookmarks
                                             # remove unicode characters that are making the reporting fails
                                             outputline = StringUtils.remove_unicode_characters(outputline)
@@ -1373,6 +1471,12 @@ if __name__ == '__main__':
                                                 #    csvdata.append(it)
                                                 csvdatas.append(outputline)
                                                 outputdata += outputline + '\n'
+                                        
+                                            list_outputviolations.append(objviol_output)
+                                            if dic_violations_by_qualityrule.get(objviol_output.violation.qrid) == None:
+                                                dic_violations_by_qualityrule[objviol_output.violation.qrid] = {}
+                                            if dic_violations_by_qualityrule[objviol_output.violation.qrid].get(objviol_output.violation.componentid) == None:
+                                                dic_violations_by_qualityrule[objviol_output.violation.qrid][objviol_output.violation.componentid] = objviol_output
                                             
                                             #########################################################################
                                             if createexclusions and exclusionRequest == None:
@@ -1385,7 +1489,7 @@ if __name__ == '__main__':
                                                 }
                                                 json_new_scheduledexclusions.append(json_new_exclusion_dict)
                                                 
-                                            if createactionplans and objviol.actionPlan == None:
+                                            if createactionplans and not objviol_output.violation.actionPlan:
                                                 logger.info("Adding the violation to action plan")
                                                 
                                                 json_ap_new = {
@@ -1437,10 +1541,15 @@ if __name__ == '__main__':
                                     else:
                                         logger.info("No exclusion created")
                                         
-                                    #TODO: change to requests lib - action plan
                                     if createactionplans and json_new_actionplans != None:
-                                        logger.info("Creating "  + str(len(json_new_actionplans)) + "action plan items " + str(json_new_actionplans))
-                                        rest_service_aip.create_actionplans(domain, applicationid,snapshotid, json_new_actionplans)
+                                        str_json_action_plans = str(json_new_actionplans).replace("'", '"')
+                                        
+                                        logger.info("Creating "  + str(len(json_new_actionplans)) + " action plan items " + str_json_action_plans)
+                                        if  str_json_action_plans == '[]':
+                                            logger.info("No action plan itea to create, items were already created")
+                                        else:
+                                            rest_service_aip.create_actionplans_json(domain, applicationid,snapshotid, str_json_action_plans)
+                                            logger.info("Action plan items created")
                                     else:
                                         logger.info("No action plan created")                                    
                                     
@@ -1468,8 +1577,138 @@ if __name__ == '__main__':
                                             generate_output_file(logger, outputextension, header, outputdata, fpath)
                                     # keep only last snapshot
                                     break
+                            
+                            ########################################################################################################
+                            # Create automated action plan, using standards and quality rules prioritized
+                            if automatedactionplan_create:
+                                logger.info("Generating automated action plan")
+                                list_priority_qs_input = []
+                                list_priority_qr_input = []
+                                mapping_qs_qr_used = {}
+                                list_priority_qr_process = []
+                                # read the file containing the quality standard to add in priority in automated action plan
+                                try:
+                                    with open(extensioninstallationfolder + 'quality standards priority for action plan.csv', 'r') as file:
+                                        reader = csv.reader(file,delimiter  = ';')
+                                        iline = 0
+                                        for each_row in reader:
+                                            if iline > 0:
+                                                firstcol = each_row[0]
+                                                if firstcol != None: 
+                                                    #print("=>" + str(firstcol))
+                                                    qs = QualityStandard()
+                                                    qs.id = str(firstcol)
+                                                    list_priority_qs_input.append(qs.id)
+                                            iline+=1
+                                except:
+                                    LogUtils.logwarning(logger, 'Not able to load file "quality standards priority for action plan.csv"', True)
+                                # read the file containing the quality rules to add in priority in automated action plan
+                                try:
+                                    with open(extensioninstallationfolder + 'quality rules priority for action plan.csv', 'r') as file:
+                                        iline = 0
+                                        reader = csv.reader(file,delimiter  = ';')
+                                        for each_row in reader:
+                                            if iline > 0:
+                                                firstcol = each_row[0]
+                                                if firstcol != None: 
+                                                    #print("=>" + str(firstcol))
+                                                    qr = Metric()
+                                                    qr.id = str(firstcol)    
+                                                    list_priority_qr_input.append(qr.id)                                                
+                                            iline+=1
+                                except:
+                                    LogUtils.logwarning(logger, 'Not able to load file "quality rules priority for action plan.csv"', True)                                
+                                
+                                set_quality_standard_used_in_app = set()
+                                
+                                # Feed the list of standards used in the set of violations filtered
+                                # and the mapping between those standard and the quality rules ids used in the app
+                                for viol_qr_id in dic_violations_by_qualityrule:
+                                    violation_outputs = dic_violations_by_qualityrule[viol_qr_id]
+                                    for componentid in violation_outputs: 
+                                        qstandards = violation_outputs[componentid].strqualitystandards
+                                        break
+                                    list_standards_for_qr = qstandards.split(",")
+                                    for qs in list_standards_for_qr:
+                                        set_quality_standard_used_in_app.add(qs)
+                                        if mapping_qs_qr_used.get(qs) == None:
+                                            mapping_qs_qr_used[qs] = set()
+                                        mapping_qs_qr_used[qs].add(viol_qr_id)
+
+                                list_violations_to_add_to_ap = []
+                                i_violations_processed = 0
+                                set_qs_already_processed = set()
+                                set_qr_already_processed = set()
+                                set_violation_ids_processed = set()
+                                
+                                # Process the priority standards that are associated to filtered violations
+                                for qs in list_priority_qs_input:
+                                    if i_violations_processed < automatedactionplan_maxnumber:
+                                        if qs in set_quality_standard_used_in_app:
+                                            if qs in set_qs_already_processed:
+                                                continue
+                                            set_qs_already_processed.add(qs)
+                                            LogUtils.loginfo(logger, "Prioritizing quality standard %s " % str(qs), True)
+                                            qs_qr_set = mapping_qs_qr_used[qs]
+                                            for qrid in list_priority_qr_input:
+                                                if i_violations_processed < automatedactionplan_maxnumber and qrid in qs_qr_set:
+                                                    LogUtils.loginfo(logger, "  Prioritizing & processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
+                                                    i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
+                                                    set_qr_already_processed.add(qrid)
+                                    
+                                            # parsing all quality rules in case we still have violations to add, inside the qs
+                                            for qrid in qs_qr_set:
+                                                if i_violations_processed < automatedactionplan_maxnumber and not qrid in set_qr_already_processed:
+                                                    LogUtils.loginfo(logger, "  Processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
+                                                    i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
+                                                    set_qr_already_processed.add(qrid)
+                                
+
+                                # parsing all quality rules in case we still have violations to add, outside the qs
+                                if i_violations_processed < automatedactionplan_maxnumber:
+                                    for qrid in list_priority_qr_input:
+                                        if i_violations_processed < automatedactionplan_maxnumber and not qrid in set_qr_already_processed:
+                                            LogUtils.loginfo(logger, "Prioritizing & processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
+                                            i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
+                                            set_qr_already_processed.add(qrid)
+
+                                
+                                # parsing all quality rules again in case we still have violations to add, outside the prioritized qs and qr
+                                if i_violations_processed < automatedactionplan_maxnumber:
+                                    for qrid in dic_violations_by_qualityrule:
+                                        if i_violations_processed < automatedactionplan_maxnumber and not qrid in set_qr_already_processed:
+                                            LogUtils.loginfo(logger, "Processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
+                                            i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
+                                            set_qr_already_processed.add(qrid)                                
+                                
+                                # Adding the items to automated action plan
+                                i_adding = 0
+                                json_str_automated_action_plan = '['
+                                for violation_output in list_violations_to_add_to_ap:
+                                    i_adding += 1
+                                    if not violation_output.violation.hasActionPlan:
+                                        json_str_automated_action_plan += '{'
+                                        json_str_automated_action_plan += '"component":{"href":"' + violation_output.componentHref + '"},'
+                                        json_str_automated_action_plan += '"rulePattern":{"href":"'+ violation_output.qrrulepatternhref + '"},'
+                                        json_str_automated_action_plan +=  '"remedialAction":{"comment":"' + violation_output.inputcomment + '","tag":"'+ violation_output.actionplaninputtag + '"}'
+                                        json_str_automated_action_plan += '},'
+                                json_str_automated_action_plan += ']'
+                                if json_str_automated_action_plan != '[]': 
+                                    json_str_automated_action_plan = json_str_automated_action_plan[:-2] + ']' 
+                                logger.info("json_str_automated_action_plan=%s" % json_str_automated_action_plan)
+                                LogUtils.loginfo(logger, "Number of violations selected for automated action plan (including violations already in action plan) : %s" % (str(i_violations_processed)), True)
+                                LogUtils.loginfo(logger, "Number of violations to be added to automated action plan : %s" % (str(i_adding)), True)
+                                logger.info("Creating automated action plan items ")
+                                if  json_str_automated_action_plan == '[]':
+                                    logger.info("No automated action plan item to create, items were already created")
+                                else:
+                                    rest_service_aip.create_actionplans_json(domain, applicationid,snapshotid, json_str_automated_action_plan)
+                                    logger.info("Action plan automated items created")
+                                
     except: # catch *all* exceptions
         tb = traceback.format_exc()
         #e = sys.exc_info()[0]
         logging.error('  Error during the processing %s' % tb)
         logging.info(' Last violation URL:' + currentviolfullurl + "=> " + qrrulepatternhref + '#' + componentHref)
+    
+    

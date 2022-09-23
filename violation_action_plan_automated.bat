@@ -34,7 +34,7 @@ SET PASSWORD=cast
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Level of detail : Full|Intermediate|Simple, default is Intermediate (better performance than Full)
-SET DETAILLEVEL=Intermediate
+SET DETAILLEVEL=Full
 
 :: Application name regexp filter
 ::SET APPFILTER=Webgoat^|eComm.*
@@ -51,7 +51,7 @@ SET CRITICALONLYFILTER=true
 :: Business criterion filter : 60017 (Total Quality Index)|60016 (Security)|60014 (Efficiency)|60013 (Robustness)|60011 (Transferability)|60012 (Changeability)
 :: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
 ::SET BCFILTER=60016,60014
-::SET BCFILTER=60016
+SET BCFILTER=60016
 
 :: Filter the violations : WithActionPlan=in the action plan|WithoutActionPlan=not in the action plan|empty=no filter
 ::SET ACTIONPLANFILTER=WithActionPlan
@@ -89,11 +89,15 @@ SET CRITICALONLYFILTER=true
 :: Create exclusion requests, for all selected violations
 ::SET CREATEEXCLUSIONS=false
 
+:: Create automated action plan
+SET AUTOMATEDACTIONPLANCREATE=true
+SET AUTOMATEDACTIONPLANMAXNUMBER=10
+
 :: Add the violations to the action plan, for all selected violations
 ::SET CREATEACTIONPLANS=false
 
 :: Action plan tag, for action plan creation
-::SET ACTIONPLANINPUTTAG=high
+SET ACTIONPLANINPUTTAG=high
 
 :: Comment, for action plan or exclusion request creation
 ::SET COMMENT=This is an action plan generated/
@@ -120,7 +124,7 @@ SET CURRENTFOLDER=%CURRENTFOLDER:~0,-1%
 
 SET OUTPUTFOLDER=%CURRENTFOLDER%
 
-SET LOGFILE=%CURRENTFOLDER%\violation_data_extraction.log
+SET LOGFILE=%CURRENTFOLDER%\violation_action_plan_automated.log
 IF DEFINED LOGFILE					SET CMD=%CMD% -log "%LOGFILE%"
 IF DEFINED OUTPUTFOLDER 			SET CMD=%CMD% -of "%OUTPUTFOLDER%"
 
@@ -128,35 +132,37 @@ SET EXTENSIONINSTALLATIONFOLDER=%CURRENTFOLDER%
 SET CMD=%CMD% -extensioninstallationfolder "%EXTENSIONINSTALLATIONFOLDER%"
 
 ECHO APPFILTER=%APPFILTER%
-IF DEFINED APPFILTER 				SET CMD=%CMD% -applicationfilter "%APPFILTER%"
-IF DEFINED DETAILLEVEL				SET CMD=%CMD% -detaillevel "%DETAILLEVEL%"
-IF DEFINED CRITICALONLYFILTER		SET CMD=%CMD% -criticalrulesonlyfilter "%CRITICALONLYFILTER%"
-IF DEFINED DISPLAYSOURCE			SET CMD=%CMD% -displaysource "%DISPLAYSOURCE%"
+IF DEFINED APPFILTER 					SET CMD=%CMD% -applicationfilter "%APPFILTER%"
+IF DEFINED DETAILLEVEL					SET CMD=%CMD% -detaillevel "%DETAILLEVEL%"
+IF DEFINED CRITICALONLYFILTER			SET CMD=%CMD% -criticalrulesonlyfilter "%CRITICALONLYFILTER%"
+IF DEFINED DISPLAYSOURCE				SET CMD=%CMD% -displaysource "%DISPLAYSOURCE%"
 
-IF DEFINED QRIDFILTER				SET CMD=%CMD% -qridfilter %QRIDFILTER%
-IF DEFINED QRNAMEFILTER				SET CMD=%CMD% -qrnamefilter "%QRNAMEFILTER%"
-IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
-IF DEFINED TECHNOFILTER				SET CMD=%CMD% -technofilter "%TECHNOFILTER%"
-IF DEFINED COMPONLOCATIONFILTER		SET CMD=%CMD% -componentnamelocationfilter "%COMPONLOCATIONFILTER%"
-IF DEFINED ACTIONPLANFILTER			SET CMD=%CMD% -actionplanfilter "%ACTIONPLANFILTER%"
-IF DEFINED EXCLUDEQUESTFILTER		SET CMD=%CMD% -exclusionrequestfilter "%EXCLUDEQUESTFILTER%"
-IF DEFINED VIOLATIONSTATUSFILTER	SET CMD=%CMD% -violationstatusfilter "%VIOLATIONSTATUSFILTER%"
-IF DEFINED COMPONSTATUSFILTER		SET CMD=%CMD% -componentstatusfilter "%COMPONSTATUSFILTER%"
-IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
-IF DEFINED PRIMINVALUEFILTER		SET CMD=%CMD% -priminvaluefilter "%PRIMINVALUEFILTER%"
-IF DEFINED COMPONENTSFILTER			SET CMD=%CMD% -componentsfilter "%COMPONENTSFILTER%"
-IF DEFINED VIOLATIONSFILTER			SET CMD=%CMD% -violationsfilter "%VIOLATIONSFILTER%"
+IF DEFINED QRIDFILTER					SET CMD=%CMD% -qridfilter %QRIDFILTER%
+IF DEFINED QRNAMEFILTER					SET CMD=%CMD% -qrnamefilter "%QRNAMEFILTER%"
+IF DEFINED BCFILTER						SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
+IF DEFINED TECHNOFILTER					SET CMD=%CMD% -technofilter "%TECHNOFILTER%"
+IF DEFINED COMPONLOCATIONFILTER			SET CMD=%CMD% -componentnamelocationfilter "%COMPONLOCATIONFILTER%"
+IF DEFINED ACTIONPLANFILTER				SET CMD=%CMD% -actionplanfilter "%ACTIONPLANFILTER%"
+IF DEFINED EXCLUDEQUESTFILTER			SET CMD=%CMD% -exclusionrequestfilter "%EXCLUDEQUESTFILTER%"
+IF DEFINED VIOLATIONSTATUSFILTER		SET CMD=%CMD% -violationstatusfilter "%VIOLATIONSTATUSFILTER%"
+IF DEFINED COMPONSTATUSFILTER			SET CMD=%CMD% -componentstatusfilter "%COMPONSTATUSFILTER%"
+IF DEFINED BCFILTER						SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
+IF DEFINED PRIMINVALUEFILTER			SET CMD=%CMD% -priminvaluefilter "%PRIMINVALUEFILTER%"
+IF DEFINED COMPONENTSFILTER				SET CMD=%CMD% -componentsfilter "%COMPONENTSFILTER%"
+IF DEFINED VIOLATIONSFILTER				SET CMD=%CMD% -violationsfilter "%VIOLATIONSFILTER%"
 
 
-IF DEFINED CREATEEXCLUSIONS 		SET CMD=%CMD% -createexclusions "%CREATEEXCLUSIONS%"
-IF DEFINED CREATEACTIONPLANS		SET CMD=%CMD% -createactionplans "%CREATEACTIONPLANS%"
-IF DEFINED ACTIONPLANINPUTTAG		SET CMD=%CMD% -actionplaninputtag "%ACTIONPLANINPUTTAG%"
-IF DEFINED COMMENT					SET CMD=%CMD% -comment "%COMMENT%"
-IF DEFINED OUTPUTEXTENSION			SET CMD=%CMD% -outputextension "%OUTPUTEXTENSION%"
+IF DEFINED CREATEEXCLUSIONS 		 	SET CMD=%CMD% -createexclusions "%CREATEEXCLUSIONS%"
+IF DEFINED CREATEACTIONPLANS			 SET CMD=%CMD% -createactionplans "%CREATEACTIONPLANS%"
+IF DEFINED ACTIONPLANINPUTTAG		 	SET CMD=%CMD% -actionplaninputtag "%ACTIONPLANINPUTTAG%"
+IF DEFINED COMMENT					 	SET CMD=%CMD% -comment "%COMMENT%"
+IF DEFINED OUTPUTEXTENSION			 	SET CMD=%CMD% -outputextension "%OUTPUTEXTENSION%"
+IF DEFINED AUTOMATEDACTIONPLANCREATE	SET CMD=%CMD% -automatedactionplan_create "%AUTOMATEDACTIONPLANCREATE%"
+IF DEFINED AUTOMATEDACTIONPLANMAXNUMBER	SET CMD=%CMD% -automatedactionplan_maxnumber "%AUTOMATEDACTIONPLANMAXNUMBER%"
 
 :: Max nbRows for the Rest API calls
 ::SET NBROWS=100000000
-IF DEFINED NBROWS					SET CMD=%CMD% -nbrows "%NBROWS%"
+IF DEFINED NBROWS						SET CMD=%CMD% -nbrows "%NBROWS%"
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 

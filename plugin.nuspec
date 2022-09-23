@@ -2,8 +2,8 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2011/08/nuspec.xsd">
   <metadata>
     <id>com.castsoftware.uc.violationextraction</id>
-    <version>1.0.7</version>
-    <title>Violation report and Action Plan/Exclusion injection</title>
+    <version>1.1.0</version>
+    <title>Violation report & automated action plan/exclusion injection</title>
     <authors>User Community</authors>
     <owners>CAST</owners>
     <projectUrl>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki</projectUrl>

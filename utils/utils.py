@@ -138,6 +138,10 @@ class FileUtils:
 
 ####################################################################################
 
+
+        
+        
+
 class RestUtils:
     CLIENT_CURL = 'curl'
     CLIENT_REQUESTS = 'requests'
@@ -305,7 +309,7 @@ class RestUtils:
             request_headers.update({'accept':'application/json'})        
             try:
                 self.session = requests.session()
-                if self.user != None and self.password != None and self.user != 'N/A' and self.user != 'N/A':
+                if self.user != None and self.password != None and self.user != 'N/A' and self.password != 'N/A':
                     self.logger.info ('Using user and password')
                     #we need to base 64 encode it 
                     #and then decode it to acsii as python 3 stores it as a byte string
@@ -420,7 +424,7 @@ class RestUtils:
     ####################################################################################################
     
     def execute_requests_post(self, request, accept='application/json', inputjson=None, contenttype='application/json'):
-        return self.execute_requests(request, 'POST', inputjson, accept, contenttype)
+        return self.execute_requests(request, 'POST', accept, inputjson, contenttype)
     
     ####################################################################################################
     
@@ -521,6 +525,14 @@ class Server:
         
 ########################################################################
 
+# snapshot filter class
+class SnapshotFilter:
+    def __init__(self, snapshot_index, snapshot_ids):
+        self.snapshot_index = snapshot_index
+        self.snapshot_ids = snapshot_ids
+
+########################################################################
+
 # snapshot class
 class Snapshot:
     def __init__(self, href=None, domainname=None, applicationid=None, applicationname=None, snapshotid=None, isodate=None, version=None):
@@ -570,12 +582,25 @@ class Snapshot:
 
             x.applicationid = -1
             x.snapshotid = -1
-            rexappsnapid = "([A-Z0-9_]+)/applications/([0-9]+)/snapshots/([0-9]+)"
+            """rexappsnapid = "([-A-Z0-9_]+)/applications/([0-9]+)/snapshots/([0-9]+)"
             m0 = re.search(rexappsnapid, x.href)
             if m0: 
                 x.domainname = m0.group(1)
                 x.applicationid = m0.group(2)
                 x.snapshotid = m0.group(3)
+            """
+            rex = "/snapshots/([0-9]+)"
+            m0 = re.search(rex, x.href)
+            if m0: 
+                x.snapshotid = m0.group(1)
+            rex = "/applications/([0-9]+)/"
+            m0 = re.search(rex, x.href)
+            if m0: 
+                x.applicationid = m0.group(1)      
+            rex = "(.*)/applications"
+            m0 = re.search(rex, x.href)
+            if m0: 
+                x.domainname = m0.group(1)      
         return x
     @staticmethod
     def loadlist(json_snapshots):
@@ -782,7 +807,7 @@ class AIPRestAPI:
         return self.restutils.execute_requests_get(request)
     
     def get_application_snapshot_modules_json(self, domainname, applicationid, snapshotid):
-        request = domainname + "/applications/" + applicationid + "/snapshots/" + snapshotid + "/modules" 
+        request = domainname + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + "/modules" 
         return self.restutils.execute_requests_get(request)    
     
     def get_application_snapshots(self, domainname, applicationid):
@@ -1113,12 +1138,12 @@ class AIPRestAPI:
     ########################################################################
     def create_scheduledexclusions_json(self, domain, applicationid, snapshotid, json_exclusions_to_create):
         request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/exclusions/requests'
-        return self.restutils.execute_request_post(request, 'application/json',json_exclusions_to_create)
+        return self.restutils.execute_requests_post(request, 'application/json',json_exclusions_to_create)
     
     ########################################################################
     def create_actionplans_json(self, domain, applicationid, snapshotid, json_actionplans_to_create):
-        request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/action-plan/issues'
-        return self.restutils.execute_request_post(request, 'application/json',json_actionplans_to_create)
+        request = domain + "/applications/" + applicationid + '/action-plan/issues'
+        return self.restutils.execute_requests_post(request, 'application/json',json_actionplans_to_create)
 
     ########################################################################
     def get_rule_pattern(self, rulepatternHref):
@@ -1228,6 +1253,8 @@ class AIPRestAPI:
             
             try:
                 metric.type = json_metric['type']
+                #if metric.type != "quality-rules":
+                #    print("not a qr")
             except KeyError:
                 None
             try:
@@ -1254,36 +1281,49 @@ class AIPRestAPI:
         if json_metric == None or json_metric['result']== None or json_metric['result']['grade'] == None:
             None
         """
+        hasresult = False
         try:
-            metric.grade = json_metric['result']['grade']
+            hasresult = json_metric['result'] != None
         except:
-            # if there is no grade, we return None and skip this metric
-            self.restutils.logger.warning("Skipping metric %s because grade is empty" % str(metric.name))
-            return None
-        try:
-            metric.failedchecks = json_metric['result']['violationRatio']['failedChecks']
-        except KeyError:
-            None                                                          
-        try:
-            metric.successfulchecks = json_metric['result']['violationRatio']['successfulChecks']
-        except KeyError:
-            None                                                             
-        try:
-            metric.totalchecks = json_metric['result']['violationRatio']['totalChecks']
-        except KeyError:
-            None                                                         
-        try:
-            metric.ratio = json_metric['result']['violationRatio']['ratio']
-        except KeyError:
-            None                                                            
-        try:
-            metric.addedviolations = json_metric['result']['evolutionSummary']['addedViolations']                                              
-        except KeyError:
-            None   
-        try:
-            metric.removedviolations = json_metric['result']['evolutionSummary']['removedViolations']
-        except KeyError:
-            None      
+            None
+
+        if hasresult:        
+            try:
+                metric.grade = json_metric['result']['grade']
+            except:
+                self.restutils.logger.warning("Metric %s has an empty grade " % str(metric.name))
+                # if there is no grade for the modules, we skip
+                # we don't skip for the application metric, even if it's not normal but we might have a grade for the module and we want to process in this case
+                if parent_metric != None:
+                    return None
+                    
+            try:
+                metric.failedchecks = json_metric['result']['violationRatio']['failedChecks']
+            except KeyError:
+                None                                                          
+            try:
+                metric.successfulchecks = json_metric['result']['violationRatio']['successfulChecks']
+            except KeyError:
+                None                                                             
+            try:
+                metric.totalchecks = json_metric['result']['violationRatio']['totalChecks']
+            except KeyError:
+                None                                                         
+            try:
+                metric.ratio = json_metric['result']['violationRatio']['ratio']
+            except KeyError:
+                None
+                
+            if  metric.ratio == None:
+                self.restutils.logger.warning("Metric %s has an empty compliance ratio " % str(metric.name))                                                           
+            try:
+                metric.addedviolations = json_metric['result']['evolutionSummary']['addedViolations']                                              
+            except KeyError:
+                None   
+            try:
+                metric.removedviolations = json_metric['result']['evolutionSummary']['removedViolations']
+            except KeyError:
+                None      
               
         return metric
 
@@ -1770,6 +1810,7 @@ class AIPRestAPI:
     ########################################################################
     def initialize_components_pri (self, domain, applicationid, snapshotid,bcids,nbrows):
         comppridict = {}
+        str_pri = ''
         for bcid in bcids:
             comppridict.update({bcid:{}})
             json_snapshot_components_pri = self.get_components_pri_json(domain, applicationid, snapshotid, bcid,nbrows)
@@ -1784,12 +1825,20 @@ class AIPRestAPI:
                         rexuri = "/components/([0-9]+)/"
                         m0 = re.search(rexuri, treenodehref)
                         if m0: compid = m0.group(1)
-                        pri = val['propagationRiskIndex']                                                 
+                        name = val['name']
+                        pri = val['propagationRiskIndex']
+                        str_pri += str(bcid) + ";" + name + ";" + str(pri) + "\n"                                                 
                         if treenodehref != None and pri != None: 
                             comppridict.get(bcid).update({compid:pri})
                             #if (bcid == 60016 or bcid == "60016"):
                                 #print(str(compid))
             json_snapshot_components_pri = None
+        # creating a file with all components PRI values per HF
+        """
+        text_file = open("components_pri.csv", "w")
+        n = text_file.write(str_pri)
+        text_file.close()
+        """
         return comppridict
     
     
@@ -1806,6 +1855,11 @@ class AIPRestAPI:
             outputtcids.update({bcid:outputtcid}) 
             json = None
         return outputtcids    
+########################################################################
+
+class QualityStandard:
+    id = None
+    category = None
     
 ########################################################################
 
@@ -1933,6 +1987,7 @@ class Violation:
     componentShortName = None
     componentNameLocation = None
     hasActionPlan = False
+    actionPlan = None
     actionplanstatus = ''
     actionplantag = ''
     actionplancomment = ''
@@ -1942,6 +1997,61 @@ class Violation:
     componentstatus = None
 
 ########################################################################
+
+class ViolationOutput:
+    appName = None
+    violation = None
+    violation_metrics = None
+    snapshotdate = None
+    snapshotversion = None
+    maxWeight = None
+    compoundedWeight = None
+    compoundedWeightFormula = None
+    failedchecks = None
+    ratio = None
+    addedViolations = None
+    removedViolations = None
+    
+    violationsStatus = None
+    componentStatus = None
+    associatedvaluelabel = None
+    associatedvalue = None
+    technicalcriteriaidandnames = None
+    strlistbc = None
+    strqualitystandards = None
+    pri_selected_bc = None
+    pri_security = None
+    pri_robustness = None
+    pri_efficiency = None
+    pri_transferability = None
+    pri_changeability = None
+    transactions_number = None
+    transactions_list = None
+    transactions_robustness_number = None
+    transactions_robustness_tri = None
+    transactions_robustness_maxtri = None
+    transactions_efficiency_number = None
+    transactions_efficiency_tri = None
+    transactions_efficiency_maxtri = None
+    transactions_security_number = None
+    transactions_security_tri = None
+    transactions_security_maxtri = None
+    distribution_cyclomaticcomplexity = None
+    distribution_costcomplexity = None
+    distribution_fanout = None
+    distribution_fanin = None
+    distribution_size = None
+    distribution_coupling = None
+    distribution_sqlcomplexity = None
+    
+    iCounterFilteredViolations = None
+    totalcritviol = None
+    totalviol = None
+    
+    qrrulepatternhref = None
+    componentHref = None
+    inputcomment = None
+    actionplaninputtag = None
    
 # Logging utils
 class LogUtils:

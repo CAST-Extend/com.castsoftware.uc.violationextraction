@@ -27,8 +27,8 @@ Inject selected violations into action plan or exclusions
 <a name="situation"></a>
 # In what situation should you install this extension?
 When you cant to prioritize the CAST AIP violations using the component PRI, contribution to a particuliar transaction, highest transaction contrintion TRI per health factors and other metrics like number of critical violations for the component, LOC, cyclomatic complexity...    
-When you want to generate an CSV report containing the list of quality rules violations for the CAST AIP plateform  
-When you want to create automated action plan based on several criteria (quality rule name, object fullname, violations status, ...)
+When you want to generate an CSV report containing the list of quality rules violations for the CAST AIP plateform   
+When you want to create automated action plan based on several criteria (quality rule name, object fullname, violations status, max number of violations to add to action plan...)   
 When you want to create automated exclusions based on several criteria (quality rule name, object fullname, violations status, ...)      
 
 <a name="aipcompatibility"></a>
@@ -41,13 +41,13 @@ N/A
 
 <a name="configuration"></a>
 # Configuration instructions
-You need to configure either the batch file provided, or the command line running the python script.
-You need to provide the CAST Engineering Dashboard URL and credentials.
+You need to configure either the batch file provided, or the command line running the python script.   
+You need to provide the CAST Engineering Dashboard URL and credentials.   
 <a name="operation"></a>
 # Operation instructions
-Requires a Python runtime 3.4 (the one installed in CAST AIP binaries in C:\Program Files\CAST\8.3\ThirdParty\Python34 can be used)
-Configure the filters if you don't want to see all the application violations, or want a better performance.
-Run the batch file or the command line running the python script
+Requires a Python runtime 3.7+ and python libraries installad : pandas, requests and xlsxwriter   
+Configure the filters if you don't want to see all the application violations, or want a better performance.   
+Run the batch file or the command line running the python script   
 
 <a name="expect"></a>
 # What results can you expect?
@@ -55,6 +55,8 @@ For each application, and only for the last snapshot:
 (option) 1 CSV file containing the list of violations corresponding to the filters configured   
 (option) if the option is selected, the violations can be added in the action  
 (option) if the option is selected, the violations can be excluded   
+(option) if the option is selected, a automated action plan injection can be done
+
 
 Data extracted:  
 - Application name (Simple/Intermediate/Full)  
@@ -113,12 +115,23 @@ Violations parameter filters available:
 - Components: -componentsfilter List of components URI, default "Empty" (All)  
 - Violations: -violationsfilter List of violations "Id" = quality rule URI#component URI, separated by comma, default "Empty" (All)   
 - Display the code sniplets ? -displaysource true/false, default false.  
+- Create an automate action plan for the selected violations ? -automatedactionplan_create
+- Max number of violations added to the automated action plan ? -automatedactionplan_maxnumber
 - Create exclusion request for the selected violations that are not already in an exclusion request ? -createexclusions true/false, default false  
 - Create action plan item for the selected violations that are not already in an action plan ? -createactionplans true/false, default false  
 - Action plan tag (new name for priority): -actionplaninputtag, default = moderate  
 - Comment for the action plan item/exclusion request created: -comment, default is 'Automated exclusion' for exclusion request, 'Automated action plan' for action plan  
 - Log level -loglevel INFO/DEBUG, default INFO  
 - Maximum number of rows -nbrows int value, default 1000000000 (has a high impact of performance, but is truncating the data)  
+
+2 files allow to prioritize the quality rules to add to automated action plans (separator to used is ";") :   
+- quality standards priority for action plan.csv: first column must contain the quality standard tag, i.e. CWE/CWE-89   
+- quality rules priority for action plan.csv: first column must contain the quality rule id, i.e. 7742 for "Avoid SQL injection" rule   
+The algorithm will prioritize :   
+- the rules that have violations and are related to the quality standards listed in the csv file, the ones listed in the csv file first   
+- else the rules listed in the csv file, using the priority order to prioritize   
+- else the others rules   
+For a given rule, the violations are prioritized by PRI   
 
 <a name="links"></a>
 ## Links
@@ -137,6 +150,8 @@ None
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.1.0  
+Automated action plan creation     
 ## Version 1.0.7
 Simplify the batch file  
 Add option to generate a CASTArchitect file containing the list of violations

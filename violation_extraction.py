@@ -1652,6 +1652,8 @@ if __name__ == '__main__':
                                             qs_qr_set = mapping_qs_qr_used[qs]
                                             for qrid in list_priority_qr_input:
                                                 if i_violations_processed < automatedactionplan_maxnumber and qrid in qs_qr_set:
+                                                    if dic_violations_by_qualityrule.get(qrid) == None:
+                                                        continue
                                                     LogUtils.loginfo(logger, "  Prioritizing & processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
                                                     i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
                                                     set_qr_already_processed.add(qrid)
@@ -1659,6 +1661,8 @@ if __name__ == '__main__':
                                             # parsing all quality rules in case we still have violations to add, inside the qs
                                             for qrid in qs_qr_set:
                                                 if i_violations_processed < automatedactionplan_maxnumber and not qrid in set_qr_already_processed:
+                                                    if dic_violations_by_qualityrule.get(qrid) == None:
+                                                        continue                                                    
                                                     LogUtils.loginfo(logger, "  Processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
                                                     i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
                                                     set_qr_already_processed.add(qrid)
@@ -1668,6 +1672,8 @@ if __name__ == '__main__':
                                 if i_violations_processed < automatedactionplan_maxnumber:
                                     for qrid in list_priority_qr_input:
                                         if i_violations_processed < automatedactionplan_maxnumber and not qrid in set_qr_already_processed:
+                                            if dic_violations_by_qualityrule.get(qrid) == None:
+                                                continue                                            
                                             LogUtils.loginfo(logger, "Prioritizing & processing quality rule %s (%s violations)" % (str(qrid),len(dic_violations_by_qualityrule[qrid])), True)
                                             i_violations_processed, list_violations_to_add_to_ap = add_violations_for_automated_ap(qrid, set_qr_already_processed, dic_violations_by_qualityrule, i_violations_processed, automatedactionplan_maxnumber, list_violations_to_add_to_ap)
                                             set_qr_already_processed.add(qrid)

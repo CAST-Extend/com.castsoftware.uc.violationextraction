@@ -1,4 +1,5 @@
 import requests
+from requests.packages.urllib3.exceptions import InsecureRequestWarning 
 from base64 import b64encode
 import re
 import os
@@ -162,6 +163,9 @@ class RestUtils:
         self.cachefolder = cachefolder
         self.cachesubfolder = None 
     
+        requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+
     ####################################################################################################
     
     def get_json(self, request, apikey=None, cachefilename=None):
@@ -330,7 +334,7 @@ class RestUtils:
                 
                 self.logger.info ('request headers = ' + str(request_headers))
                 
-                response = self.session.get(uri, headers=request_headers)
+                response = self.session.get(uri, headers=request_headers, verify=False)
                 
             except:
                 self.logger.error ('Error connecting to ' + uri)

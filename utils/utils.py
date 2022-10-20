@@ -255,6 +255,9 @@ class RestUtils:
         strcmd += ' -H "X-Client: ' + self.extensionid + '"'
         if self.apikey != None and self.apikey != 'N/A':
             strcmd += ' -H "X-API-KEY: ' + self.apikey+ '"'
+            # add user if we use the API KEY
+            if self.user != None and self.user != 'N/A':
+                strcmd += ' -H "X-API-USER: ' + self.user+ '"'
         if self.user != None and self.password != None and self.user != 'N/A' and self.password != 'N/A':
             strcmd += ' -u ' + self.user + ':' + self.password            
         strcmd += ' -H "Connection: keep-alive"'
@@ -327,6 +330,8 @@ class RestUtils:
                     self.logger.info ('Using api key')
                     # API key configured in the Health / Engineering / REST-API WAR
                     request_headers.update({'X-API-KEY':self.apikey})
+                    if self.user != None and self.user != 'N/A':
+                        request_headers.update({'X-API-USER':self.user})
                     # we are provide a user name hardcoded' 
                     #request_headers.update({'X-API-USER':'admin_apikey'})            
                     # API key configured in ExtenNG

@@ -351,6 +351,15 @@ if __name__ == '__main__':
             logger.error('Malformed rootedurl value, abording : ' + rootedurl)
             sys.exit(-1)  
     
+    
+        # we cannot combine both
+        if qridfilter != None and (businesscriterionfilter != None or criticalrulesonlyfilter):
+            msg = 'ERROR : We can''t combine the filter using a list of quality rules ids (qridfilter) and a list of business criteria (businesscriterionfilter) or only the critical rules (criticalrulesonlyfilter) ! Please adjust your filters.'
+            print(msg)
+            logger.error(msg)
+            sys.exit(-1)
+            
+    
         # log params
         logger.info('********************************************')
         LogUtils.loginfo(logger,'script_version='+script_version,True)
@@ -725,8 +734,6 @@ if __name__ == '__main__':
                                                 None    
                                                 
                                             # filter on quality rule id or name, if the filter match
-                                            if qridfilter != None and not re.match(qridfilter, str(objviol.qrid)):
-                                                continue
                                             if qrnamefilter != None and not re.match(qrnamefilter, objviol.qrname):
                                                 continue                                                
                                                 
@@ -746,10 +753,11 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 objviol.hasActionPlan = None
                                             # filter the violations already in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan' and objviol.hasActionPlan == None:
-                                                continue
+                                            if actionplanfilter != None and actionplanfilter == 'WithActionPlan': 
+                                                if (objviol.hasActionPlan == None or not objviol.hasActionPlan):
+                                                    continue
                                             # filter the violations not in the action plan 
-                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and objviol.hasActionPlan != None:
+                                            if actionplanfilter != None and actionplanfilter == 'WithoutActionPlan' and objviol.hasActionPlan != None and objviol.hasActionPlan:
                                                 continue
                                                 
                                             try:                                    
@@ -757,10 +765,10 @@ if __name__ == '__main__':
                                             except KeyError:
                                                 objviol.exclusionRequest = None
                                             # filter the violations already in the exclusion list 
-                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'Excluded' and objviol.exclusionRequest != None:
+                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'Excluded' and (objviol.exclusionRequest == None or not objviol.exclusionRequest):
                                                 continue
                                             # filter the violations not in the exclusion list 
-                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'NotExcluded' and objviol.exclusionRequest == None:
+                                            if exclusionrequestfilter != None and exclusionrequestfilter == 'NotExcluded' and (objviol.exclusionRequest != None or objviol.exclusionRequest):
                                                 continue
                                                 
                                             try:                                    

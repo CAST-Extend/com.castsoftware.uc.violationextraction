@@ -43,16 +43,18 @@ SET APPFILTER=Webgoat
 :: Critical rules violations filter: true|false (default = false)
 SET CRITICALONLYFILTER=true
 
-:: Display the source code in violation in the csv file : true|false, default = false
-:: SET DISPLAYSOURCE=true
-
-:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-
 :: Business criterion filter : 60017 (Total Quality Index)|60016 (Security)|60014 (Efficiency)|60013 (Robustness)|60011 (Transferability)|60012 (Changeability)
 :: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
 ::SET BCFILTER=60016,60014
 ::SET BCFILTER=60016
 
+:: Quality rule id regexp filter (default = no filter) - cannot be combined with above two filters
+:: SET QRIDFILTER=
+
+:: Display the source code in violation in the csv file : true|false, default = false
+::SET DISPLAYSOURCE=true
+
+:::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Filter the violations : WithActionPlan=in the action plan|WithoutActionPlan=not in the action plan|empty=no filter
 ::SET ACTIONPLANFILTER=WithActionPlan
 
@@ -68,8 +70,7 @@ SET CRITICALONLYFILTER=true
 :: Component status filter: added|updated|unchanged (default = no filter)
 ::SET COMPONSTATUSFILTER=added
 
-:: Quality rule id regexp filter (default = no filter)
-:: SET QRIDFILTER=
+
 
 :: Quality rule name regexp  filter (default = no filter)
 :: SET QRNAMEFILTER=

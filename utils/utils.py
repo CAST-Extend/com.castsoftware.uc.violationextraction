@@ -972,17 +972,37 @@ class AIPRestAPI:
         request = domainname + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/violations'
         request += '?startRow=1'
         request += '&nbRows=' + str(violationfilter.nbrows)
-        if violationfilter.criticalrulesonly != None and violationfilter.criticalrulesonly:         
-            request += '&rule-pattern=critical-rules'
+        
+        # we can't have 2 rule-pattern params filled, else the most wide will be used, nor the most narrow (it will use "or" not "and")
+        rule_patterns_filled = False
+
+        # filter on violation status
         if violationfilter.violationstatus != None:
             request += '&status=' + violationfilter.violationstatus
-        if violationfilter.businesscriterion == None:
-            violationfilter.businesscriterion = "60017"
-        if violationfilter.businesscriterion != None:
+
+        # filter on technology
+        if violationfilter.techno != None:
+            request += '&technologies=' + violationfilter.techno
+
+        # filter on list of quality rules ids
+        if violationfilter.qrid != None:
+            strqrid = str(violationfilter.qrid)
+            if not rule_patterns_filled:
+                request += '&rule-pattern=('
+                for item in strqrid.split(sep=','):
+                    request += item + ','
+                request = request[:-1]
+                request += ')'
+                rule_patterns_filled = True                
+                
+        # filter on business criterion, or several business criterias
+        elif violationfilter.businesscriterion != None:
             strbusinesscriterionfilter = str(violationfilter.businesscriterion)        
             # we can have multiple value separated with a comma
             if ',' not in strbusinesscriterionfilter:
                 request += '&business-criterion=' + strbusinesscriterionfilter
+            elif not rule_patterns_filled:
+                # case of multiple value separated with a comma, cannot be combined with list of quality rules ids 
             request += '&rule-pattern=('
             for item in strbusinesscriterionfilter.split(sep=','):
                 request += 'cc:' + item + ','
@@ -990,9 +1010,13 @@ class AIPRestAPI:
                     request += 'nc:' + item + ','
             request = request[:-1]
             request += ')'
+                rule_patterns_filled = True
+        
+        elif not rule_patterns_filled and violationfilter.criticalrulesonly != None and violationfilter.criticalrulesonly:
+            # cannot be combined with list of quality rules ids, or several business criterias         
+            request += '&rule-pattern=critical-rules'
+            rule_patterns_filled = True
             
-        if violationfilter.techno != None:
-            request += '&technologies=' + violationfilter.techno
             
         return self.restutils.execute_requests_get(request)
         

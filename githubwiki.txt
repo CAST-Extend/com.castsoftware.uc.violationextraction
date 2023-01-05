@@ -150,6 +150,9 @@ None
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.1.5
+Improve performance when adding a filter of quality rules ids, and it's not possible anymore to combine this filter with critical rules only, or business criterion filter  
+Fix an issue in the 2 filters actionplanfilter and exclusionrequestfilter  
 ## Version 1.1.4
 Add a sample sh file to run the extension
 ## Version 1.1.3

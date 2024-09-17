@@ -384,7 +384,7 @@ class RestUtils:
             request_headers.update({'X-XSRF-TOKEN': self.session.cookies['XSRF-TOKEN']})
         except KeyError:
             None
-        request_headers.update({'Content-Type': 'application/json'})
+        request_headers.update({'Content-Type': contenttype})
     
         LogUtils.logdebug(self.logger,'Sending ' + requesttype + ' ' + request_text + ' with contenttype=' + contenttype + ' json=' + str(inputjsonstr), False)
         #LogUtils.logdebug(self.logger,'  Request headers=' + json.dumps(request_headers) , False)
@@ -406,8 +406,10 @@ class RestUtils:
             #LogUtils.logdebug(self.logger,'  HTTP code=%s headers=%s'% (str(response.status_code), json.dumps(response.headers._store)), False)
             
             # Error
-            if response.status_code not in (200, 201):
+            if response.status_code not in (200, 201, 204):
                 LogUtils.logerror(self.logger,'HTTP(S) request failed ' + str(response.status_code) + ' :' + request_text,True)
+                if response.text != None:
+                    LogUtils.logerror(self.logger,'%s' % str(response.text), True)
                 return None
             else:
                 # get the session cookie containing JSESSION
@@ -437,8 +439,8 @@ class RestUtils:
     
     ####################################################################################################
     
-    def execute_requests_put(self, request, accept='application/json', inputjson=None, contenttype='application/json'):
-        return self.execute_requests(request, 'PUT', accept, inputjson, contenttype)
+    def execute_requests_put(self, request, accept='application/json', inputcontent=None, contenttype='application/json'):
+        return self.execute_requests(request, 'PUT', accept, inputcontent, contenttype)
     
     ####################################################################################################
     
@@ -826,6 +828,10 @@ class AIPRestAPI:
             it.modules = modulelist 
         return snapshotlist 
     
+    def get_application_modules(self, domainname, applicationid, snapshotid):
+        modulelist = Module.loadlist(self.get_application_snapshot_modules_json(domainname, applicationid, snapshotid))
+        return modulelist
+    
     ########################################################################
     def get_total_number_violations_json(self, domain, applicationid, snapshotid):
         self.restutils.logger.info("Extracting the number of violations")
@@ -998,18 +1004,18 @@ class AIPRestAPI:
         # filter on business criterion, or several business criterias
         elif violationfilter.businesscriterion != None:
             strbusinesscriterionfilter = str(violationfilter.businesscriterion)        
-            # we can have multiple value separated with a comma
+            # we can't have multiple value separated with a comma
             if ',' not in strbusinesscriterionfilter:
                 request += '&business-criterion=' + strbusinesscriterionfilter
             elif not rule_patterns_filled:
                 # case of multiple value separated with a comma, cannot be combined with list of quality rules ids 
-            request += '&rule-pattern=('
-            for item in strbusinesscriterionfilter.split(sep=','):
-                request += 'cc:' + item + ','
-                if violationfilter.criticalrulesonly == None or not violationfilter.criticalrulesonly:   
-                    request += 'nc:' + item + ','
-            request = request[:-1]
-            request += ')'
+                request += '&rule-pattern=('
+                for item in strbusinesscriterionfilter.split(sep=','):
+                    request += 'cc:' + item + ','
+                    if violationfilter.criticalrulesonly == None or not violationfilter.criticalrulesonly:   
+                        request += 'nc:' + item + ','
+                request = request[:-1]
+                request += ')'
                 rule_patterns_filled = True
         
         elif not rule_patterns_filled and violationfilter.criticalrulesonly != None and violationfilter.criticalrulesonly:
@@ -1167,6 +1173,22 @@ class AIPRestAPI:
             request += '&technologies=' + technoFilter
             
         return self.restutils.execute_requests_get(request)
+
+    ########################################################################
+    def update_backgroundfactmetric(self, domain, applicationid, snapshotid, metricid, coveragevalue, modulelist, central_schema="com_vogella_junit_first_central", app_name="com.vogella.junit.first"):
+        #AAD/applications/3/snapshots/10/results?background-facts=(66004)
+        request = domain + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + "/results"
+        #?background-facts=(' + str(metricid) + ')'
+        #?background-facts=(' + metricid + ')'
+        
+        value = "ADG Database;Application Name;Module Name;Metric Id;Result\n"
+        formatedcoverage_for_hd = float(coveragevalue) / 100
+        value += central_schema + ";" + central_schema + ";;"+(metricid)+";" + str(formatedcoverage_for_hd) + "\n"
+        for it in modulelist:
+            # we don't compute a coverage value for the modules, so we inject 0 value
+            value += central_schema + ";" + app_name + ";" + it.modulename + ";"+(metricid)+";0\n"
+        
+        return self.restutils.execute_requests_put(request, accept='application/json', inputcontent=value, contenttype='text/csv')
     
     ########################################################################
     def create_scheduledexclusions_json(self, domain, applicationid, snapshotid, json_exclusions_to_create):
@@ -1436,6 +1458,8 @@ class AIPRestAPI:
                             # skip the metrics that have no grade
                             if metric_module == None:
                                 continue
+                            if metric_module.grade != None:
+                                b_one_module_has_grade = True
                             metric_module.applicationName = res['application']['name']
                             metric_module.threshold1 = metric.threshold1
                             metric_module.threshold2 = metric.threshold2
@@ -1444,8 +1468,19 @@ class AIPRestAPI:
                             dictmodules[mod_name][metric_module] = metric_module
                     except KeyError:
                         None
-                    
-                      
+                # we add the metric only if it has a grade at application level or has grade at least at module level
+                if metric.type in ("quality-measures","quality-distributions","quality-rules"):
+                    if b_has_grade or b_one_module_has_grade:
+                        dictmetrics[metric.id] = metric  
+                    if not b_has_grade or (modules != None and not b_one_module_has_grade):
+                        LogUtils.logwarning(self.restutils.logger, "Metric %s" % metric.name, True)
+                    if not b_has_grade:
+                        LogUtils.logwarning(self.restutils.logger, "    has no grade at application level", True)
+                    if modules != None and not b_one_module_has_grade:
+                        LogUtils.logwarning(self.restutils.logger, "    has no grade at module level", True)
+                    if not b_has_grade and not b_one_module_has_grade:
+                        LogUtils.logwarning(self.restutils.logger, "    skipping metric", True)
+                           
         return dictmetrics, dicttechnicalcriteria, listbc, dictmodules
 
     ########################################################################
@@ -2113,4 +2148,25 @@ class LogUtils:
         if tosysout:
             print("#### " + msg)
 
+#########################################################################
+class MSAUtils:
+    @staticmethod
+    def getbloctype(generated_bks,line_begin,line_end):
+        #K60M3G.cbl;2419;1986;82%;1:448|492:640|1011:2402
+        if generated_bks is None or generated_bks == "":
+            return "Manual" 
+        split_bks = generated_bks.split('|')
+        for sp in split_bks:
+            if sp is None or len(sp.split(":")) != 2:
+                return "Manual" 
+            bk_start = int(sp.split(":")[0])
+            bk_end = int(sp.split(":")[1])     
+            if line_begin >= bk_start and line_begin <= bk_end and line_end >= bk_start and line_end <= bk_end:
+                return "Generated"
+            elif line_begin >= bk_start and line_begin <= bk_end and line_end > bk_end:
+                return "Mixed"
+            elif line_begin < bk_start and line_end >= bk_start and line_end <= bk_end:
+                return "Generated"
+
+        return "Manual"
 #########################################################################

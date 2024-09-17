@@ -38,7 +38,7 @@ SET DETAILLEVEL=Simple
 
 :: Application name regexp filter
 ::SET APPFILTER=Webgoat^|eComm.*
-SET APPFILTER=Webgoat
+SET APPFILTER=WebGoat
 
 :: Critical rules violations filter: true|false (default = false)
 ::SET CRITICALONLYFILTER=true

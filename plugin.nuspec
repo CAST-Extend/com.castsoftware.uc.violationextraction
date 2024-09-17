@@ -10,14 +10,14 @@
     <iconUrl>https://raw.githubusercontent.com/CAST-Extend/com.castsoftware.uc.violationextraction/master/export_csv-512.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>Prioritize the violations on the PRI, TRI, and many others criterias. Export the violations for CAST Engineering Dashboard REST API into a CSV report.Inject selected violations into action plan or exclusions</description>
-    <releaseNotes>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki#version-115</releaseNotes>
+    <releaseNotes>https://github.com/CAST-Extend/com.castsoftware.uc.violationextraction/wiki#version-116</releaseNotes>
     <tags>CASTUserCommunity Quality</tags>
     <dependencies>
       <dependency id="CAIP" version="8.3.3" />
     </dependencies>
   </metadata>
    <files>
-     <file src="**\*" exclude="test\**\*.*;bat\**\*.*;**\*.csv;**\*.bak;**\*.bak;components_pri.csv;**\*.xslx;**\*.log;**\*.png;**\*.gitignore;**\*.xml;**githubwiki**\*.txt;**\*.CASTArchitect;**\*violation_extraction_ign.py;**\*application_complexity.py;__pycache__\**\*.*"/>
+     <file src="**\*" exclude="test\**\*.*;bat\**\*.*;**\*.csv;**\*.bak;**\*.bak;components_pri.csv;**\*.xslx;**\*.1;**\*.log;**\*.png;**\*.gitignore;**\*.xml;**githubwiki**\*.txt;**\*.CASTArchitect;**\*violation_extraction_imsa.py;**\*violation_extraction_ign.py;**\*application_complexity.py;__pycache__\**\*.*"/>
    </files>
 	
 </package>

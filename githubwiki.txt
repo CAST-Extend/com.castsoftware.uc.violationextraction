@@ -26,7 +26,7 @@ Inject selected violations into action plan or exclusions
 
 <a name="situation"></a>
 # In what situation should you install this extension?
-When you cant to prioritize the CAST AIP violations using the component PRI, contribution to a particuliar transaction, highest transaction contrintion TRI per health factors and other metrics like number of critical violations for the component, LOC, cyclomatic complexity...    
+When you cant to prioritize the CAST AIP violations using the component PRI, contribution to a particular transaction, highest transaction contrintion TRI per health factors and other metrics like number of critical violations for the component, LOC, cyclomatic complexity...    
 When you want to generate an CSV report containing the list of quality rules violations for the CAST AIP plateform   
 When you want to create automated action plan based on several criteria (quality rule name, object fullname, violations status, max number of violations to add to action plan...)   
 When you want to create automated exclusions based on several criteria (quality rule name, object fullname, violations status, ...)      
@@ -45,7 +45,7 @@ You need to configure either the batch file provided, or the command line runnin
 You need to provide the CAST Engineering Dashboard URL and credentials.   
 <a name="operation"></a>
 # Operation instructions
-Requires a Python runtime 3.7+ and python libraries installad : pandas, requests and xlsxwriter   
+Requires a Python runtime 3.12+ and python libraries installad : pandas, requests and xlsxwriter   
 Configure the filters if you don't want to see all the application violations, or want a better performance.   
 Run the batch file or the command line running the python script   
 
@@ -115,6 +115,7 @@ Violations parameter filters available:
 - Components: -componentsfilter List of components URI, default "Empty" (All)  
 - Violations: -violationsfilter List of violations "Id" = quality rule URI#component URI, separated by comma, default "Empty" (All)   
 - Display the code sniplets ? -displaysource true/false, default false.  
+- If your application is a Mainframe application and you want the code sniplets ? is_mainframe true/false, default false.  
 - Create an automate action plan for the selected violations ? -automatedactionplan_create
 - Max number of violations added to the automated action plan ? -automatedactionplan_maxnumber
 - Create exclusion request for the selected violations that are not already in an exclusion request ? -createexclusions true/false, default false  
@@ -123,6 +124,7 @@ Violations parameter filters available:
 - Comment for the action plan item/exclusion request created: -comment, default is 'Automated exclusion' for exclusion request, 'Automated action plan' for action plan  
 - Log level -loglevel INFO/DEBUG, default INFO  
 - Maximum number of rows -nbrows int value, default 1000000000 (has a high impact of performance, but is truncating the data)  
+
 
 2 files allow to prioritize the quality rules to add to automated action plans (separator to used is ";") :   
 - quality standards priority for action plan.csv: first column must contain the quality standard tag, i.e. CWE/CWE-89   
@@ -150,6 +152,10 @@ None
 - The Full extraction and/or with the code sniplet can take up to several hours for an application containing 70k to 100k violations. This limitation cannot be removed because thoushands of rest API calls a done in this case. Depending of the level of detail you need, you should consider applied some filters (critical rules only, ...).
 <a name="rn"></a>
 # Release Notes
+## Version 1.1.6
+Add a is_mainframe parameter if you want to export the code sniplet for Mainframe application, in combination with displaysource parameter  
+Fix the python regexp expressions warning for new python version
+Now requires Python 3.12 and above  
 ## Version 1.1.5
 Improve performance when adding a filter of quality rules ids, and it's not possible anymore to combine this filter with critical rules only, or business criterion filter  
 Fix an issue in the 2 filters actionplanfilter and exclusionrequestfilter  

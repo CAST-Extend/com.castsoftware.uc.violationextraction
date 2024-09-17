@@ -34,14 +34,14 @@ SET PASSWORD=cast
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
 :: Level of detail : Full|Intermediate|Simple, default is Intermediate (better performance than Full)
-SET DETAILLEVEL=Intermediate
+SET DETAILLEVEL=Simple
 
 :: Application name regexp filter
 ::SET APPFILTER=Webgoat^|eComm.*
 SET APPFILTER=Webgoat
 
 :: Critical rules violations filter: true|false (default = false)
-SET CRITICALONLYFILTER=true
+::SET CRITICALONLYFILTER=true
 
 :: Business criterion filter : 60017 (Total Quality Index)|60016 (Security)|60014 (Efficiency)|60013 (Robustness)|60011 (Transferability)|60012 (Changeability)
 :: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
@@ -52,7 +52,10 @@ SET CRITICALONLYFILTER=true
 :: SET QRIDFILTER=
 
 :: Display the source code in violation in the csv file : true|false, default = false
-::SET DISPLAYSOURCE=true
+SET DISPLAYSOURCE=true
+:: Is a mainframe application, processing the source code bookmarks is differente for Mainframe
+:: requires the level of detail to be Full
+::SET IS_MAINFRAME=true
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Filter the violations : WithActionPlan=in the action plan|WithoutActionPlan=not in the action plan|empty=no filter
@@ -133,6 +136,7 @@ IF DEFINED APPFILTER 				SET CMD=%CMD% -applicationfilter "%APPFILTER%"
 IF DEFINED DETAILLEVEL				SET CMD=%CMD% -detaillevel "%DETAILLEVEL%"
 IF DEFINED CRITICALONLYFILTER		SET CMD=%CMD% -criticalrulesonlyfilter "%CRITICALONLYFILTER%"
 IF DEFINED DISPLAYSOURCE			SET CMD=%CMD% -displaysource "%DISPLAYSOURCE%"
+IF DEFINED IS_MAINFRAME				SET CMD=%CMD% -is_mainframe "%IS_MAINFRAME%"
 
 IF DEFINED QRIDFILTER				SET CMD=%CMD% -qridfilter %QRIDFILTER%
 IF DEFINED QRNAMEFILTER				SET CMD=%CMD% -qrnamefilter "%QRNAMEFILTER%"

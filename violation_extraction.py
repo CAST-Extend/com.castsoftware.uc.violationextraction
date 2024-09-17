@@ -14,7 +14,7 @@ import pandas as pd
 from io import StringIO
 import xlsxwriter
 from utils.utils import RestUtils, AIPRestAPI, LogUtils, ObjectViolationMetric, RulePatternDetails, FileUtils, StringUtils, Violation, ViolationFilter,\
-    ViolationOutput, QualityStandard, Metric
+    ViolationOutput, QualityStandard, Metric, MSAUtils
 from model.modelclasses import ArchitectureModel, Property, Layer, Criteria
 from model import metamodel
 
@@ -71,6 +71,9 @@ def init_parse_argument():
     requiredNamed.add_argument('-extensioninstallationfolder', required=False, dest='extensioninstallationfolder', help='extension installation folder')    
     
     requiredNamed.add_argument('-generate_ac_model', required=False, dest='generate_ac_model', help='Generate architecture model for QR violations')
+    
+    requiredNamed.add_argument('-is_mainframe', required=False, dest='is_mainframe', help='Is a Mainframe application')
+    
     
     return parser
 ########################################################################
@@ -227,6 +230,10 @@ if __name__ == '__main__':
     if args.detaillevel != None and (args.detaillevel == 'Simple' or args.detaillevel == 'Intermediate' or args.detaillevel == 'Full'):
         detaillevel = args.detaillevel
     
+    is_mainframe = False
+    if args.is_mainframe  != None and (args.is_mainframe == 'True' or args.is_mainframe == 'true'):
+        is_mainframe = True    
+    
     generate_ac_model = False
     if args.generate_ac_model  != None and (args.generate_ac_model == 'True' or args.generate_ac_model == 'true'):
         generate_ac_model = True
@@ -255,6 +262,7 @@ if __name__ == '__main__':
     bload_serverdetail = bload_all_data
     bload_quality_model = True
     bload_distributions = bload_all_data
+
 
     ###########################################################################
     # Forcing the filter values (harcoded), for testing
@@ -335,7 +343,7 @@ if __name__ == '__main__':
         rootedurl = 'Undefined'
         
         # split the URL to extract the warname, host, protocol ... 
-        rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
+        rexURL = r"(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
         m0 = re.search(rexURL, restapiurl)
         if m0:
             protocol = m0.group(2)
@@ -343,7 +351,7 @@ if __name__ == '__main__':
             warname = m0.group(5)
   
         # Processing for the Engineering dashboard URL 
-        rexURL = "(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
+        rexURL = r"(([hH][tT][tT][pP][sS]*)[:][/][/]([A-Za-z0-9_:\.-]+)([/]([A-Za-z0-9_\.-]+))*[/]*)"
         m0 = re.search(rexURL, edurl)
         if m0:
             rootedurl = m0.group(1)
@@ -439,6 +447,7 @@ if __name__ == '__main__':
         # few checks on the server
         server = rest_service_aip.get_server()
         if server != None: logger.info('server version=%s, memory (free)=%s' % (str(server.version), str(server.freememory)))
+        
         
         # retrieve the domains & the applications in those domains 
         json_domains = rest_service_aip.get_domains_json()
@@ -547,7 +556,7 @@ if __name__ == '__main__':
                                             qrid = qmitem['key']
                                             qrcompoundWeight = qmitem['compoundedWeight'] 
                                             qrcompoundWeightFormula = qmitem['compoundedWeightFormula']
-                                            regexp = "\([0-9]+x([0-9]+)\)"                                            
+                                            regexp = r"\([0-9]+x([0-9]+)\)"                                            
                                             for m in re.finditer(regexp, qrcompoundWeightFormula):
                                                 if m.group(1) != None and int(m.group(1)) > int(maxWeight): 
                                                     maxWeight = int(m.group(1))                                            
@@ -686,7 +695,9 @@ if __name__ == '__main__':
                                         outputline += ';Critical violations;Cyclomatic complexity;LOC;CommentLines;Ratio CommentLines/CodeLines'
                                         outputline += ';Action plan status;Action plan tag;Action plan comment'
                                         outputline += ';Exclusion request;Exclusion request comment'
-                                        outputline += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmarks;Source code sniplet'
+                                        outputline += ';Parameters;URL;Quality rule URI;Component URI;Violation findings URI;Violation id;Bookmark(s);Source code sniplet(s)'
+ 
+                                        #outputline += ';Generated;Manual;Mixed'
                                         header = outputline 
                                         #print(outputline)
                                         #logger.debug(outputline)
@@ -704,11 +715,12 @@ if __name__ == '__main__':
                                         
                                         
                                         for violation in json_violations:
+                                            i_progress_step = 100
                                             iCouterRestAPIViolations += 1
                                             currentviolurl = ''
                                             violations_size = len(json_violations)
                                             imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
-                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
+                                            if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%i_progress_step == 0:
                                                 LogUtils.loginfo(logger, "processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
                                             objviol = Violation()
                                             objviol_output = ViolationOutput() 
@@ -906,6 +918,7 @@ if __name__ == '__main__':
                                                 if not 'path' in associatedValueName.lower():
                                                     json_findings = rest_service_aip.get_objectviolation_findings_json(componentHref, objviol.qrid)
                                                 
+                                                logger.debug("json_findings=" + str(json_findings))
                                                 if json_findings != None: 
                                                     fin_name = json_findings['name']
                                                     fin_type = json_findings['type']
@@ -940,23 +953,38 @@ if __name__ == '__main__':
                                                         if associatedvalue != '': associatedvalue = associatedvalue[:-1]
         
                                                     if fin_bookmarks != None:
-                                                        icountbkm = 0
+                                                        icount_main_bkm = 0
                                                         prevfile = ''
+                                                        bbreak=False
                                                         for bkm in fin_bookmarks:
+                                                            icountbkm = 0
+                                                            icount_main_bkm += 1
+                                                            if bbreak: break
+                                                            if strbookmarks == '': strbookmarks ='"'
+                                                            strbookmarks += 'Occurence #' + str(icount_main_bkm)+ "/" + str(len(fin_bookmarks)) + '\n'
                                                             for bkm2 in bkm:
+                                                                if bbreak: break
                                                                 try:
                                                                     icountbkm += 1
-                                                                    # we add a " at the beginning to manage the multiline for code source in excel int the same cell
-                                                                    if strbookmarks == '': strbookmarks ='"'
+                                                                    # we add a " at the beginning to manage the multiline for code source in excel in the same cell
+                                                                    
                                                                     curfile = bkm2['codeFragment']['file']['name']
                                                                     startLine = bkm2['codeFragment']['startLine']
                                                                     endLine = bkm2['codeFragment']['endLine']
+                                                                    
                                                                     if curfile != prevfile:
                                                                         strbookmarks += curfile + '\n'
-                                                                    strbookmarks += '#' + str(icountbkm) + ' line ' + str(startLine)+' => ' + str(endLine) + '\n'
+                                                                        
+                                                                    strbookmarks += '#' + str(icountbkm) + ' line ' + str(startLine)+' => ' + str(endLine)
+                                                                    #to identify generated code based on generated tags position in the code
+ 
+                                                                    strbookmarks += '\n'
                                                                     prevfile = curfile
+                                                                    #TODO remove
+                                                                    #bbreak = True
                                                                 except KeyError:
                                                                     None
+
                                                         if strbookmarks == '' or strbookmarks == '"':
                                                             strbookmarks = ''
                                                         # we add a " at the end to manage the multiline for code source in excel int the same cell
@@ -976,9 +1004,98 @@ if __name__ == '__main__':
                                             #if objviol.qrid == "7294":
                                             #    continue
                                             #AED5/local-sites/162402639/file-contents/140 lines 167=>213
-                                            if displaysource: 
-                                                if sourceCodesHref != None:
+                                            if displaysource:
+                                                # case of mainframe the bookmarks contains the source sniplet, in sourceCodesHref we have all the code for the program and all its copybooks
+                                                try:
+                                                    if fin_bookmarks :
+                                                        None 
+                                                except:
+                                                    fin_bookmarks = None 
+                                                if is_mainframe and fin_bookmarks:
+                                                    icount_main_bkm = 0
+                                                    prevfile = ''
+                                                    bbreak=False
+                                                    for bkm in fin_bookmarks:
+                                                        icountbkm = 0
+                                                        icount_main_bkm += 1
+                                                        if bbreak: break
+
+                                                        srcToBeAddedToCsv = 'Occurence #' + str(icount_main_bkm)+ "/" + str(len(fin_bookmarks)) + '\n'
+
+                                                        #strbookmarks += 'Occurence #' + str(icount_main_bkm) + '\n'
+                                                        for bkm2 in bkm:
+                                                            if bbreak: break
+                                                            try:
+                                                                icountbkm += 1
+                                                                # we add a " at the beginning to manage the multiline for code source in excel in the same cell
+                                                                
+                                                                curfile = bkm2['codeFragment']['file']['name']
+                                                                # taking the 20 lines before and 20 lines after
+                                                                startline =  bkm2['codeFragment']['startLine'] 
+                                                                srcstartline = startline - 10
+                                                                endline = bkm2['codeFragment']['endLine']
+                                                                srcendline = endline + 10
+                                                                
+                                                                filehref = bkm2['codeFragment']['file']['href']
+                                                                filereference = curfile
+                                                                strstartendlineparams = ''
+                                                                if srcstartline >= 0 and srcendline >= 0:
+                                                                    filereference += ':'
+                                                                    filereference += ' lines ' + str(startline) + ' => ' +str(endline)
+                                                                    if icountbkm > 1:
+                                                                        filereference += ' (additional information)'                                                                    
+                                                                                                                                
+                                                                partialfiletxt = rest_service_aip.get_sourcecode_file_json(filehref, srcstartline, srcendline)
+                                                                if partialfiletxt == None:
+                                                                    logger.info("Second try without the line numbers")
+                                                                    partialfiletxt = rest_service_aip.get_sourcecode_file_json(filehref, None, None)
+                                                                    if partialfiletxt != None:
+                                                                        logger.info("Second try worked")
+                                                                if partialfiletxt == None:
+                                                                    logger.warning("Couldn't extract the file " + filehref)
+                                                                if partialfiletxt != None:
+                                                                    filewithlinesnumber = ''
+                                                                    
+                                                                    # do not export the code for QR 7294 Avoid cyclical calls and inheritances between namespaces content
+                                                                    if objviol.qrid != "7294":
+                                                                        txtSrcCode = ''
+                                                                        if srcstartline >= 0 :
+                                                                            filelines = partialfiletxt.split("\n")
+                                                                            iline = srcstartline
+                                                                            for line in filelines:
+                                                                                # add line number and remove ; characters from the code
+                                                                                filewithlinesnumber += str(iline) + ' ' +  line.replace(";", "<#>") + '\n'
+                                                                                iline += 1
+                                                                            txtSrcCode = filereference + '\n' + filewithlinesnumber
+                                                                        else: 
+                                                                            txtSrcCode = filereference + '\n' + partialfiletxt
+                                                                        if icountbkm > 1:
+                                                                            srcToBeAddedToCsv += '\n' 
+                                                                        srcToBeAddedToCsv += txtSrcCode
+                                                                    
+                                                                    # we save only after looking at all bookmarks for 1 violation 
+                                                                    if icountbkm == 1:
+                                                                        srcCodeReference.append(filereference)
+                                                                    elif icountbkm == len(bkm):
+                                                                        srcCode.append(srcToBeAddedToCsv)
+                                                                
+                                                                if curfile != prevfile:
+                                                                    #strbookmarks += curfile + '\n'
+                                                                    None
+                                                                    
+                                                                prevfile = curfile
+                                                                #TODO remove
+                                                                #bbreak = True
+                                                            except KeyError:
+                                                                None
+                                                    
+                                                ##############################################################################################
+                                                # case not mainframe and we have a uri to browse
+                                                elif sourceCodesHref != None:
                                                     json_sourcescode = rest_service_aip.get_sourcecode_json(sourceCodesHref)
+
+                                                    logger.debug("sourceCodesHref=" + sourceCodesHref)
+                                                    logger.debug("json_sourcescode=" + str(json_sourcescode))
                                                     if json_sourcescode != None:
                                                         for src in json_sourcescode:
                                                             filereference = ''
@@ -1440,6 +1557,7 @@ if __name__ == '__main__':
                                                     for srcref in srcCodeReference:
                                                         outputline += ';"'+ srcref + '"'                                    
                                                 '''
+                                                LogUtils.logdebug(logger,"  #code bookmarks="+str(len(srcCode)), False)
                                                 if len(srcCode) > 0:
                                                     iNbCodeCol = 0
                                                     for src in srcCode:
@@ -1471,7 +1589,9 @@ if __name__ == '__main__':
                                                 logging.error('  Error to get the source code %s' % tb)
 
                                             # remove unicode characters that are making the reporting fails
-                                            outputline = StringUtils.remove_unicode_characters(outputline)                                            
+                                            outputline = StringUtils.remove_unicode_characters(outputline) 
+                                            #show source code
+                                            #logger.debug(outputline)                                           
                                             #########################################################################
                                             # append the data
                                             if outputextension in ('csv','xlsx'):
@@ -1497,7 +1617,7 @@ if __name__ == '__main__':
                                                 }
                                                 json_new_scheduledexclusions.append(json_new_exclusion_dict)
                                                 
-                                            if createactionplans and not objviol_output.violation.actionPlan:
+                                            if createactionplans:# and not objviol_output.violation.actionPlan:
                                                 logger.info("Adding the violation to action plan")
                                                 
                                                 json_ap_new = {
@@ -1549,6 +1669,7 @@ if __name__ == '__main__':
                                     else:
                                         logger.info("No exclusion created")
                                         
+                                    logger.info("json_new_actionplans=%s" % str(json_new_actionplans))
                                     if createactionplans and json_new_actionplans != None:
                                         str_json_action_plans = str(json_new_actionplans).replace("'", '"')
                                         

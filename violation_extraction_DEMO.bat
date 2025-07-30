@@ -13,6 +13,7 @@ ECHO =================================
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 REM install the additional python lib required
+REM see also Requirements.txt
 REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install pandas
 REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install requests 
 REM IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install xlsxwriter
@@ -28,8 +29,8 @@ SET RESTAPIURL=https://demo-eu.castsoftware.com/Engineering/rest
 ::SET EDURL=https://demo-eu.castsoftware.com/Engineering
 
 ::SET APIKEY=N/A
-SET USER=CIO
-SET PASSWORD=cast
+SET USER=demo
+SET PASSWORD=
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
@@ -41,12 +42,17 @@ SET DETAILLEVEL=Simple
 SET APPFILTER=WebGoat
 
 :: Critical rules violations filter: true|false (default = false)
-::SET CRITICALONLYFILTER=true
+SET CRITICALONLYFILTER=true
 
 :: Business criterion filter : 60017 (Total Quality Index)|60016 (Security)|60014 (Efficiency)|60013 (Robustness)|60011 (Transferability)|60012 (Changeability)
 :: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
 ::SET BCFILTER=60016,60014
 ::SET BCFILTER=60016
+
+:: Technical criterion filter : 61014 (Programming Practices - Error and Exception Handling)|61027 (Dead code)|...
+:: to filter the violations and retrieve the PRI for this business criterion (if only one is selected). (default = no filter)
+::SET TCFILTER=60016,60014
+::SET TCFILTER=61027
 
 :: Quality rule id regexp filter (default = no filter) - cannot be combined with above two filters
 :: SET QRIDFILTER=
@@ -56,6 +62,11 @@ SET DISPLAYSOURCE=true
 :: Is a mainframe application, processing the source code bookmarks is differente for Mainframe
 :: requires the level of detail to be Full
 ::SET IS_MAINFRAME=true
+
+:: Options : modules, ...
+:: both params are required if we want to have the module(s) for each violation  
+SET OPTIONS=modules
+SET MODULEFILTER=$all
 
 :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: Filter the violations : WithActionPlan=in the action plan|WithoutActionPlan=not in the action plan|empty=no filter
@@ -137,10 +148,12 @@ IF DEFINED DETAILLEVEL				SET CMD=%CMD% -detaillevel "%DETAILLEVEL%"
 IF DEFINED CRITICALONLYFILTER		SET CMD=%CMD% -criticalrulesonlyfilter "%CRITICALONLYFILTER%"
 IF DEFINED DISPLAYSOURCE			SET CMD=%CMD% -displaysource "%DISPLAYSOURCE%"
 IF DEFINED IS_MAINFRAME				SET CMD=%CMD% -is_mainframe "%IS_MAINFRAME%"
+IF DEFINED OPTIONS					SET CMD=%CMD% -options "%OPTIONS%"
 
 IF DEFINED QRIDFILTER				SET CMD=%CMD% -qridfilter %QRIDFILTER%
 IF DEFINED QRNAMEFILTER				SET CMD=%CMD% -qrnamefilter "%QRNAMEFILTER%"
 IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
+IF DEFINED TCFILTER					SET CMD=%CMD% -technicalcriterionfilter "%TCFILTER%"
 IF DEFINED TECHNOFILTER				SET CMD=%CMD% -technofilter "%TECHNOFILTER%"
 IF DEFINED COMPONLOCATIONFILTER		SET CMD=%CMD% -componentnamelocationfilter "%COMPONLOCATIONFILTER%"
 IF DEFINED ACTIONPLANFILTER			SET CMD=%CMD% -actionplanfilter "%ACTIONPLANFILTER%"
@@ -151,6 +164,7 @@ IF DEFINED BCFILTER					SET CMD=%CMD% -businesscriterionfilter "%BCFILTER%"
 IF DEFINED PRIMINVALUEFILTER		SET CMD=%CMD% -priminvaluefilter "%PRIMINVALUEFILTER%"
 IF DEFINED COMPONENTSFILTER			SET CMD=%CMD% -componentsfilter "%COMPONENTSFILTER%"
 IF DEFINED VIOLATIONSFILTER			SET CMD=%CMD% -violationsfilter "%VIOLATIONSFILTER%"
+IF DEFINED MODULEFILTER				SET CMD=%CMD% -modulefilter "%MODULEFILTER%"
 
 
 IF DEFINED CREATEEXCLUSIONS 		SET CMD=%CMD% -createexclusions "%CREATEEXCLUSIONS%"

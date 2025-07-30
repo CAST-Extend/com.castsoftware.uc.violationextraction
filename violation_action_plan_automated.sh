@@ -13,6 +13,7 @@ echo "================================="
 
 #######################################################################
 # install the additional python lib required
+# see also Requirements.txt
 # IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install pandas
 # IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install requests
 # IF NOT "%PYTHONPATH%" == "" "%PYTHONPATH%\Scripts\pip" install xlsxwriter

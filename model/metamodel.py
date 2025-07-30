@@ -1,5 +1,6 @@
 import os
 import xml.etree.ElementTree as ET
+from utils.utils import LogUtils
 
 # metamodel label <=> type mapping
 mm_type = {

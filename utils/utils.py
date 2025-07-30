@@ -23,9 +23,11 @@ class Filter:
         None
         
 class ViolationFilter(Filter):
-    def __init__(self, criticalrulesonlyfilter, businesscriterionfilter, technofilter, violationstatusfilter, qridfilter, qrnamefilter, nbrowsfilter):
+    def __init__(self, criticalrulesonlyfilter, businesscriterionfilter, technicalcriterionfilter, technofilter, violationstatusfilter, qridfilter, qrnamefilter, modulefilter, nbrowsfilter):
         self.criticalrulesonly = criticalrulesonlyfilter
+        self.technicalcriterion = technicalcriterionfilter
         self.businesscriterion = businesscriterionfilter
+        self.modulefilter = modulefilter
         self.techno = technofilter
         self.violationstatus = violationstatusfilter
         self.nbrows = nbrowsfilter
@@ -55,8 +57,13 @@ class StringUtils:
     ########################################################################
     @staticmethod
     def remove_trailing_suffix (mystr, suffix='rest'):
+        # remove trailing /
+        while mystr.endswith('/'):
+            mystr = mystr[:-1]
         if mystr.endswith(suffix):
-            return mystr[:len(mystr)-len(mystr)-1]
+            return (mystr[:len(mystr)-len(suffix)-1])        
+        else:
+            return mystr
 
 ######################################################################################################################
 
@@ -94,13 +101,14 @@ class FileUtils:
     If no exception thrown, then the file is not locked.
     """
     @staticmethod
-    def is_file_locked_with_retries(logger, filepath):
+    def is_file_locked_with_retries(filepath):
+        logutils = LogUtils()
         filelocked = False
         icount = 0
         while icount < 10 and FileUtils.is_file_locked(filepath):
             icount += 1
             filelocked = True
-            LogUtils.logwarning(logger,'File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (filepath, str(icount)),True)
+            logutils.logwarning('File %s is locked. Please unlock it ! Waiting 5 seconds before retrying (try %s/10) ' % (filepath, str(icount)),True)
             time.sleep(5)
         if not FileUtils.is_file_locked(filepath):
             filelocked = False
@@ -149,11 +157,10 @@ class RestUtils:
     
     USERAGENT = 'XY'
    
-    def __init__(self, logger, url, restclient, user=None, password = None, apikey = None, uselocalcache=False, cachefolder=None, extensionid='Community Extension'): 
+    def __init__(self, url, restclient, user=None, password = None, apikey = None, uselocalcache=False, cachefolder=None, extensionid='Community Extension'): 
         self.session_cookie = None
         self.session = None
         self.restclient = restclient
-        self.logger = logger
         self.url = url
         self.extensionid = extensionid
         self.user = user
@@ -169,6 +176,7 @@ class RestUtils:
     ####################################################################################################
     
     def get_json(self, request, apikey=None, cachefilename=None):
+        logutils = LogUtils()
         json_filepath = self.get_cachefilepath(cachefilename)
         # create parent folder if required 
         if json_filepath != None and not os.path.exists(os.path.dirname(json_filepath)):
@@ -180,9 +188,9 @@ class RestUtils:
                 #with open(json_filepath, 'r') as json_file:
                     return json.load(json_file)
             except UnicodeDecodeError:
-                LogUtils.logwarning(self.logger, 'Unicode decode error in json file %s: Skipping' % json_filepath, True)                
+                logutils.logwarning('Unicode decode error in json file %s: Skipping' % json_filepath, True)                
             except json.decoder.JSONDecodeError:
-                LogUtils.logwarning(self.logger, 'Invalid json file %s: Skipping' % json_filepath, True)  
+                logutils.logwarning('Invalid json file %s: Skipping' % json_filepath, True)  
         else:
             if self.restclient == 'curl':
                 return self.execute_curl(request, apikey, json_filepath)
@@ -245,6 +253,7 @@ class RestUtils:
 
     ####################################################################################################
     def execute_curl(self, request, apikey, cachefilepath, requesttype='GET', accept='application/json', inputjsonstr=None):
+        logutils = LogUtils()
         json_output = None
         request_text = self.url + request
         
@@ -269,12 +278,12 @@ class RestUtils:
         if not os.path.exists(os.path.dirname(cachefilepath)):
             os.makedirs(os.path.dirname(cachefilepath))
 
-        LogUtils.logdebug(self.logger,"curl running: " + strcmd, True)
+        logutils.logdebug("curl running: " + strcmd, True)
         status, curl_output = subprocess.getstatusoutput(strcmd)
         if status != 0:
             # error
-            LogUtils.logerror(self.logger,"Error running %s - curl status %s" % (request_text, str(status)), True)
-            LogUtils.logerror(self.logger,"curl output %s" % curl_output)
+            logutils.logerror("Error running %s - curl status %s" % (request_text, str(status)), True)
+            logutils.logerror("curl output %s" % curl_output)
             raise SystemError                
 
         # if no error send back a json string containing data from the cache file just loaded
@@ -282,9 +291,9 @@ class RestUtils:
             with open(cachefilepath, 'r') as json_file:
                 json_output = json.load(json_file)
         except UnicodeDecodeError:
-            LogUtils.logwarning(self.logger, 'Unicode decode error in json file %s: Skipping' % cachefilepath, True)
+            logutils.logwarning('Unicode decode error in json file %s: Skipping' % cachefilepath, True)
         except json.decoder.JSONDecodeError:
-            LogUtils.logwarning(self.logger, 'Invalid json file %s: Skipping' % cachefilepath, True)   
+            logutils.logwarning('Invalid json file %s: Skipping' % cachefilepath, True)   
 
         return json_output
     
@@ -303,13 +312,13 @@ class RestUtils:
     ####################################################################################################
     # retrieve the connection
     def open_session(self, resturi=''):
-        
+        logutils = LogUtils()
         if self.restclient == 'curl':
             # Nothing to do for curl
             None
         elif self.restclient == 'requests':
             uri = self.url + '/' +  resturi
-            self.logger.info('Opening session to ' + uri)
+            logutils.loginfo('Opening session to ' + uri)
             response = None
             request_headers = {}
             #request_headers.update(self.get_default_http_headers())        
@@ -317,7 +326,7 @@ class RestUtils:
             try:
                 self.session = requests.session()
                 if self.user != None and self.password != None and self.user != 'N/A' and self.password != 'N/A':
-                    self.logger.info ('Using user and password')
+                    logutils.loginfo ('Using user and password')
                     #we need to base 64 encode it 
                     #and then decode it to acsii as python 3 stores it as a byte string
                     #userAndPass = b64encode(user_password).decode("ascii")
@@ -327,7 +336,7 @@ class RestUtils:
                     request_headers.update({'Authorization':'Basic %s' %  user_and_pass})
                 # else if the api key is provided
                 elif self.apikey != None and self.apikey != 'N/A':
-                    self.logger.info ('Using api key')
+                    logutils.loginfo ('Using api key')
                     # API key configured in the Health / Engineering / REST-API WAR
                     request_headers.update({'X-API-KEY':self.apikey})
                     if self.user != None and self.user != 'N/A':
@@ -337,36 +346,38 @@ class RestUtils:
                     # API key configured in ExtenNG
                     #request_headers.update({'x-nuget-apikey':self.apikey})
                 
-                self.logger.info ('request headers = ' + str(request_headers))
+                logutils.loginfo ('request headers = ' + str(request_headers))
                 
                 response = self.session.get(uri, headers=request_headers, verify=False)
                 
             except:
-                self.logger.error ('Error connecting to ' + uri)
-                self.logger.error ('URL is not reachable. Please check your connection (web application down, VPN not active, ...)')
+                logutils.logerror ('Error connecting to ' + uri)
+                logutils.logerror ('URL is not reachable. Please check your connection (web application down, VPN not active, ...)')
                 raise SystemExit
             #finally:
-            #    self.logger.info ('Headers = ' + str(response.headers))
+            #    logutils.loginfo ('Headers = ' + str(response.headers))
                 
             if response.status_code != 200:
                 # This means something went wrong.
-                self.logger.error ('Error connecting to ' + uri)
-                self.logger.info ('Status code = ' + str(response.status_code))
-                self.logger.info ('response headers = ' + str(response.headers))
-                self.logger.info ('Please check the URL, user and password or api key')
+                logutils.logerror ('Error connecting to ' + uri)
+                logutils.loginfo ('Status code = ' + str(response.status_code))
+                logutils.loginfo ('response headers = ' + str(response.headers))
+                logutils.loginfo ('Please check the URL, user and password or api key')
                 raise SystemExit
             else: 
-                self.logger.info ('Successfully connected to  : ' + self.url)    
+                logutils.loginfo ('Successfully connected to  : ' + self.url)    
     
     ####################################################################################################
 
     def get_default_http_headers(self):
+        logutils = LogUtils()
         # User agent & Name of the client added in the header (for the audit trail)
         default_headers = {"User-Agent": "XY", "X-Client": self.extensionid} 
         return default_headers
 
     ####################################################################################################
     def execute_requests(self, request, requesttype='GET', accept='application/json', inputjsonstr=None, contenttype='application/json'):
+        logutils = LogUtils()
         if self.session == None:
             self.session = self.open_session()
             
@@ -386,8 +397,8 @@ class RestUtils:
             None
         request_headers.update({'Content-Type': contenttype})
     
-        LogUtils.logdebug(self.logger,'Sending ' + requesttype + ' ' + request_text + ' with contenttype=' + contenttype + ' json=' + str(inputjsonstr), False)
-        #LogUtils.logdebug(self.logger,'  Request headers=' + json.dumps(request_headers) , False)
+        logutils.logdebug('Sending ' + requesttype + ' ' + request_text + ' with contenttype=' + contenttype + ' json=' + str(inputjsonstr), False)
+        #logutils.logdebug('  Request headers=' + json.dumps(request_headers) , False)
     
         # send the request
         if 'GET' == requesttype:
@@ -399,17 +410,17 @@ class RestUtils:
         elif 'DELETE' == requesttype:
             response = self.session.delete(request_text,inputjsonstr,headers=request_headers)    
         else:
-            LogUtils.logerror(self.logger,'Invalid HTTP request type' + requesttype)
+            logutils.logerror('Invalid HTTP request type' + requesttype)
         
         output = None
         if response != None:
-            #LogUtils.logdebug(self.logger,'  HTTP code=%s headers=%s'% (str(response.status_code), json.dumps(response.headers._store)), False)
+            #logutils.logdebug('  HTTP code=%s headers=%s'% (str(response.status_code), json.dumps(response.headers._store)), False)
             
             # Error
             if response.status_code not in (200, 201, 204):
-                LogUtils.logerror(self.logger,'HTTP(S) request failed ' + str(response.status_code) + ' :' + request_text,True)
+                logutils.logerror('HTTP(S) request failed ' + str(response.status_code) + ' :' + request_text,True)
                 if response.text != None:
-                    LogUtils.logerror(self.logger,'%s' % str(response.text), True)
+                    logutils.logerror('%s' % str(response.text), True)
                 return None
             else:
                 # get the session cookie containing JSESSION
@@ -535,6 +546,44 @@ class Server:
         else: return None
         
 ########################################################################
+# module class
+class ModuleUnit:
+    def __init__(self, href=None, name=None):
+        self.id = None
+        self.href = href
+        self.name = name
+        self.including_snapshots = []
+        self.init_id()
+
+
+    @staticmethod
+    def get_moduleid_from_href(href):
+        moduleid = None
+        if href:
+            for item in href.split(sep='/'):
+                moduleid = item        
+        return moduleid
+
+    def init_id(self):
+        self.id = ModuleUnit.get_moduleid_from_href(self.href)       
+
+    @staticmethod
+    def load(json_module):
+        x = ModuleUnit()
+        if json_module != None:
+            x.name = json_module['name']
+            x.href = json_module['href']
+            x.init_id()            
+            
+        return x
+    @staticmethod
+    def loadlist(json_modules):
+        objlist = []
+        if json_modules != None:
+            for json_module in json_modules:
+                objlist.append(ModuleUnit.load(json_module)) 
+        return objlist  
+##################################################################################
 
 # snapshot filter class
 class SnapshotFilter:
@@ -559,6 +608,7 @@ class Snapshot:
         self.number = None
         self.technologies = None
         self.modules = None
+        self.rank = None
         self.last = None
         self.beforelast = None
         self.first = None
@@ -573,7 +623,7 @@ class Snapshot:
         return strtechnologies
 
     @staticmethod
-    def load(json_snapshot, last, beforelast, first):
+    def load(json_snapshot, last, beforelast, first, rank):
         x = Snapshot()
         if json_snapshot != None:
             x.version = json_snapshot['annotation']['version']
@@ -586,6 +636,7 @@ class Snapshot:
             x.last = last
             x.beforelast = beforelast
             x.first = first
+            x.rank = rank
             try:
                 x.technologies = json_snapshot['technologies']
             except KeyError:
@@ -618,9 +669,16 @@ class Snapshot:
         snapshotlist = []
         if json_snapshots != None:
             icount = 0
+            rank = ""
             for json_snapshot in json_snapshots:
                 icount += 1
-                snapshotlist.append(Snapshot.load(json_snapshot, icount==1, icount==2, icount==len(json_snapshots))) 
+                if icount==1:
+                    rank="N"
+                elif icount==2:
+                    rank="N-1"
+                else:
+                    rank = "N-" + str(int(rank.split('-')[1])+1)
+                snapshotlist.append(Snapshot.load(json_snapshot, icount==1, icount==2, icount==len(json_snapshots),rank)) 
         return snapshotlist  
 
 ########################################################################
@@ -739,7 +797,7 @@ class AIPRestAPI:
                 conn = psycopg2.connect(host=host, port = port, database=database, user=user, password=password)
                 cur = conn.cursor()
                 sql = "SELECT package_name,version FROM " + mngt_schema + ".sys_package_version where package_name like '%CORE_PMC%' or package_name like '%com%' order by 1 desc"
-                self.restutils.logger.debug("sql="+sql)
+                logutils.logdebug("sql="+sql)
                 #minjus_genesis_82_mngt.sys_package_version where package_name like '%CORE_PMC%' or package_name like '%com%' order by 1 desc"""
                 cur.execute(sql) 
                 for package_name, version in cur.fetchall():
@@ -764,7 +822,7 @@ class AIPRestAPI:
 
         except:
             tb = traceback.format_exc()
-            LogUtils.logerror(self.restutils.logger, "Error extracting the versions from postgresql %s" % tb, True)
+            logutils.logerror("Error extracting the versions from postgresql %s" % tb, True)
         finally:
             if cur is not None:
                 cur.close()
@@ -791,6 +849,30 @@ class AIPRestAPI:
         return Domain.loadlist(self.get_domains_json())
         
     ########################################################################
+    def get_modules_json(self,domainname,applicationid):
+        request = domainname + "/applications/" + applicationid + "/modules"
+        return self.restutils.execute_requests_get(request)
+
+    def get_modules_snapshots_json(self,domainname,applicationid, modulehref):
+        request = modulehref + "/snapshots" 
+        return self.restutils.execute_requests_get(request)
+
+    def get_modules(self,domainname,applicationid):
+        list_modules = ModuleUnit.loadlist(self.get_modules_json(domainname,applicationid))
+        for module in list_modules:
+            json_module_snapshots = self.get_modules_snapshots_json(domainname, applicationid, module.href)
+            for json_snapshot in json_module_snapshots:
+                snapshot_href = None
+                try:
+                    snapshot_href = json_snapshot["applicationSnapshot"]["href"]
+                    snapshot_id = ModuleUnit.get_moduleid_from_href(snapshot_href)
+                except KeyError:
+                    None
+                if snapshot_id:
+                    module.including_snapshots.append(snapshot_id)
+        
+        return list_modules
+    ########################################################################
     def get_applications_json(self, domain):
         request = domain + "/applications"
         return self.restutils.execute_requests_get(request)
@@ -806,7 +888,8 @@ class AIPRestAPI:
     
     ########################################################################
     def get_transactions_per_business_criterion(self, domainname, applicationid, snapshotid, bcid, nbrows):
-        self.restutils.logger.info("Extracting the transactions for business criterion " + bcid)
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the transactions for business criterion " + bcid)
         request = domainname + "/applications/" + applicationid + "/snapshots/" + snapshotid + "/transactions/" + bcid
         request += '?startRow=1'
         request += '&nbRows=' + str(nbrows)    
@@ -834,7 +917,8 @@ class AIPRestAPI:
     
     ########################################################################
     def get_total_number_violations_json(self, domain, applicationid, snapshotid):
-        self.restutils.logger.info("Extracting the number of violations")
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the number of violations")
         request = domain + "/results?sizing-measures=67011,67211&application=" + applicationid + "&snapshot=" + snapshotid
         return self.restutils.execute_requests_get(request)
     
@@ -846,6 +930,7 @@ class AIPRestAPI:
     
     ########################################################################
     def get_dict_cyclomaticcomplexity_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         #Very High Complexity Artifacts
         categories = [1,2,3,4]
@@ -857,11 +942,13 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Cyclomatic complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                    
+                logutils.loginfo('Cyclomatic complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
 
     ########################################################################
     def get_dict_costcomplexity_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         categories = [1,2,3,4]
         labels = {1:'Very High Complexity',2:'High Complexity',3:'Moderate Complexity',4:'Low Complexity'}
@@ -872,11 +959,12 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Cost complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('Cost complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
 
     ########################################################################
     def get_dict_fanout_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         categories = [1,2,3,4]
         labels = {1:'Very High Fan-Out classes',2:'High Fan-Out classes',3:'Moderate Fan-Out classes',4:'Low Fan-Out classes'}
@@ -887,11 +975,12 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Fan-Out classes distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('Fan-Out classes distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
 
     ########################################################################
     def get_dict_fanin_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         #Very High Fan-In classes
         categories = [1,2,3,4]
@@ -903,11 +992,12 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Fan-In classes distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('Fan-In classes distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
 
     ########################################################################
     def get_dict_coupling_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         #Very High Coupling Artifacts
         categories = [1,2,3,4]
@@ -919,11 +1009,12 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Coupling distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('Coupling distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
 
     ########################################################################
     def get_dict_size_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         categories = [1,2,3,4]
         # Very Large Size Artifacts
@@ -935,10 +1026,11 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'Size distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('Size distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
     ########################################################################
     def get_dict_SQLcomplexity_distribution(self, domain, applicationid, snapshotid, nbrows):
+        logutils = LogUtils()
         dict = {}
         categories = [1,2,3,4]
         # Very Large Size Artifacts
@@ -950,7 +1042,7 @@ class AIPRestAPI:
                 for it in json:
                     icount += 1
                     dict.update({it['href']:labels.get(cat)})
-                LogUtils.loginfo(self.restutils.logger, 'SQL complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
+                logutils.loginfo('SQL complexity distribution cat ' + str(cat) + ' : ' + str(icount), False)
         return dict
     ########################################################################
     def get_distributions_details(self, domain, applicationid, snapshotid, nbrows):
@@ -973,8 +1065,74 @@ class AIPRestAPI:
         return dict
 
     ########################################################################
+    def get_snapshot_modules_violations(self, domainname, moduleid, snapshotid, violationfilter):
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the module snapshot violations")
+        request = domainname + "/modules/" + moduleid + "/snapshots/" + snapshotid + '/violations'
+        request += '?startRow=1'
+        request += '&nbRows=' + str(violationfilter.nbrows)
+        
+        # we can't have 2 rule-pattern params filled, else the most wide will be used, nor the most narrow (it will use "or" not "and")
+        rule_patterns_filled = False
+
+        # filter on violation status
+        if violationfilter.violationstatus != None:
+            request += '&status=' + violationfilter.violationstatus
+
+        # filter on technology
+        if violationfilter.techno != None:
+            request += '&technologies=' + violationfilter.techno
+
+        # filter on list of quality rules ids
+        if violationfilter.qrid != None:
+            strqrid = str(violationfilter.qrid)
+            if not rule_patterns_filled:
+                request += '&rule-pattern=('
+                for item in strqrid.split(sep=','):
+                    request += item + ','
+                request = request[:-1]
+                request += ')'
+                rule_patterns_filled = True                
+                
+        # filter on business criterion, or several business criterias
+        elif violationfilter.businesscriterion != None:
+            strbusinesscriterionfilter = str(violationfilter.businesscriterion)        
+            # we can't have multiple value separated with a comma
+            if ',' not in strbusinesscriterionfilter:
+                request += '&business-criterion=' + strbusinesscriterionfilter
+            elif not rule_patterns_filled:
+                # case of multiple value separated with a comma, cannot be combined with list of quality rules ids 
+                request += '&rule-pattern=('
+                for item in strbusinesscriterionfilter.split(sep=','):
+                    request += 'cc:' + item + ','
+                    if violationfilter.criticalrulesonly == None or not violationfilter.criticalrulesonly:   
+                        request += 'nc:' + item + ','
+                request = request[:-1]
+                request += ')'
+                rule_patterns_filled = True
+        
+        elif violationfilter.technicalcriterion != None:
+            strtechnicalcriterionfilter = str(violationfilter.technicalcriterion)
+            request += '&rule-pattern=('
+            for item in strtechnicalcriterionfilter.split(sep=','):
+                request += 'c:' + item + ','
+            request = request[:-1]
+            request += ')' 
+        elif not rule_patterns_filled and violationfilter.criticalrulesonly != None and violationfilter.criticalrulesonly:
+            # cannot be combined with list of quality rules ids, or several business criterias         
+            request += '&rule-pattern=critical-rules'
+            rule_patterns_filled = True
+        
+
+             
+        return self.restutils.execute_requests_get(request)               
+               
+                
+    ########################################################################
     def get_snapshot_violations_json(self, domainname, applicationid, snapshotid, violationfilter):
-        self.restutils.logger.info("Extracting the snapshot violations")
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot violations")
+
         request = domainname + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/violations'
         request += '?startRow=1'
         request += '&nbRows=' + str(violationfilter.nbrows)
@@ -1018,18 +1176,72 @@ class AIPRestAPI:
                 request += ')'
                 rule_patterns_filled = True
         
+        elif violationfilter.technicalcriterion != None:
+            strtechnicalcriterionfilter = str(violationfilter.technicalcriterion)
+            request += '&rule-pattern=('
+            for item in strtechnicalcriterionfilter.split(sep=','):
+                request += 'c:' + item + ','
+            request = request[:-1]
+            request += ')' 
         elif not rule_patterns_filled and violationfilter.criticalrulesonly != None and violationfilter.criticalrulesonly:
             # cannot be combined with list of quality rules ids, or several business criterias         
             request += '&rule-pattern=critical-rules'
             rule_patterns_filled = True
-            
+        
+        if violationfilter.modulefilter:
+            if violationfilter.modulefilter == "$all":
+                request += '&modules=$all'
+            else:
+                request += '&modules=(' + violationfilter.modulefilter + "')"
             
         return self.restutils.execute_requests_get(request)
         
         
-    def get_snapshot_violations(self, domainname, applicationid, snapshotid, edurl, snapshothref, tqiqm, listtccontributions, violationfilter):
+    def get_snapshot_violations(self, domainname, applicationid, snapshotid, edurl=None, snapshothref=None, tqiqm=None, listtccontributions=None, violationfilter=None):
+        logutils = LogUtils()
+        logutils.loginfo("Extracting violations (modulesfilter=%s)" % str(violationfilter.modulefilter),True)
+        json_violations = []
         listviolations = []
-        json_violations = self.get_snapshot_violations_json(domainname, applicationid, snapshotid, violationfilter)                                            
+        #modules_violations = {}
+        violations_modules = {}
+        
+        # modules violations
+        if violationfilter.modulefilter and violationfilter.modulefilter == "$all":
+            for module in self.get_modules(domainname, applicationid):
+                logutils.loginfo("  processing module %s" % str(module.name),True)
+                if snapshotid in module.including_snapshots:
+                    module_json_violations = self.get_snapshot_modules_violations(domainname,module.id,snapshotid, violationfilter)
+                    json_violations += module_json_violations
+                    """module_violations = modules_violations.get(module.name) 
+                    if not module_violations:
+                        modules_violations[module.name] = []
+                        module_violations = modules_violations.get(module.name)
+                    """
+                    for violation in module_json_violations:
+                        #modules_violations[module.name].append(violation)
+                        
+                        try:                                    
+                            qrrulepatternhref = violation['rulePattern']['href']
+                        except KeyError:
+                            qrrulepatternhref = None
+                        try:
+                            componentHref = violation['component']['href']
+                        except KeyError:
+                            componentHref = None
+                        if qrrulepatternhref and componentHref:
+                            violationid = qrrulepatternhref+'#'+componentHref
+                            violation_modules = violations_modules.get(violationid) 
+                            if not violation_modules:
+                                violations_modules[violationid] = []
+                            violations_modules[violationid].append(module.name)
+        
+            
+            #with open('violations_modules.json', 'w') as f:
+            #    json.dump(violations_modules, f)
+        
+        # application violations
+        else:
+            json_violations = self.get_snapshot_violations_json(domainname, applicationid, snapshotid, violationfilter)                                            
         if json_violations != None:
             iCouterRestAPIViolations = 0
             for violation in json_violations:
@@ -1039,18 +1251,18 @@ class AIPRestAPI:
                 violations_size = len(json_violations)
                 imetricprogress = int(100 * (iCouterRestAPIViolations / violations_size))
                 if iCouterRestAPIViolations==1 or iCouterRestAPIViolations==violations_size or iCouterRestAPIViolations%500 == 0:
-                    LogUtils.loginfo(self.restutils.logger,"processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
+                    logutils.loginfo("processing violation " + str(iCouterRestAPIViolations) + "/" + str(violations_size)  + ' (' + str(imetricprogress) + '%)',True)
                 try:
                     objviol.qrname = violation['rulePattern']['name']
                 except KeyError:
                     qrname = None    
                        
                 try:                                    
-                    qrrulepatternhref = violation['rulePattern']['href']
+                    objviol.qrrulepatternhref = violation['rulePattern']['href']
                 except KeyError:
-                    qrrulepatternhref = None
+                    objviol.qrrulepatternhref = None
                                                                 
-                qrrulepatternsplit = qrrulepatternhref.split('/')
+                qrrulepatternsplit = objviol.qrrulepatternhref.split('/')
                 for elem in qrrulepatternsplit:
                     # the last element is the id
                     objviol.qrid = elem                                            
@@ -1058,11 +1270,12 @@ class AIPRestAPI:
                 # critical contribution
                 objviol.qrcritical = '<Not extracted>'
                 try:
-                    qrdetails = tqiqm[objviol.qrid]
-                    if tqiqm != None and qrdetails != None and qrdetails.get("critical") != None:
-                        objviol.critical = str(qrdetails.get("critical"))
+                    if tqiqm:
+                        qrdetails = tqiqm[objviol.qrid]
+                        if tqiqm != None and qrdetails != None and qrdetails.get("critical") != None:
+                            objviol.critical = str(qrdetails.get("critical"))
                 except KeyError:
-                    LogUtils.logwarning(self.restutils.logger, 'Could not find the critical contribution for %s'% str(objviol.qrid), True)
+                    logutils.logwarning('Could not find the critical contribution for %s'% str(objviol.qrid), True)
                     
                 # filter on quality rule id or name, if the filter match
                 if violationfilter.qrid != None and not re.match(violationfilter.qrid, str(objviol.qrid)):
@@ -1073,80 +1286,94 @@ class AIPRestAPI:
                 try:               
                     objviol.hasActionPlan = actionPlan != None
                 except KeyError:
-                    self.restutils.logger.warning('Not able to extract the action plan')
+                    logutils.logwarning('Not able to extract the action plan')
                 if objviol.hasActionPlan:
                     try:               
                         objviol.actionplanstatus = actionPlan['status']
                         objviol.actionplantag = actionPlan['tag']
                         objviol.actionplancomment = actionPlan['comment']
                     except KeyError:
-                        self.restutils.logger.warning('Not able to extract the action plan details')
+                        logutils.logwarning('Not able to extract the action plan details')
                 try:                                    
                     objviol.hasExclusionRequest = violation['exclusionRequest'] != None
+                    if objviol.hasExclusionRequest:
+                        objviol.exclusioncomment = violation['exclusionRequest']['comment']
                 except KeyError:
-                    self.restutils.logger.warning('Not able to extract the exclusion request')
+                    logutils.logwarning('Not able to extract the exclusion request')
                 # filter the violations already in the exclusion list 
                 try:                                    
                     objviol.violationstatus = violation['diagnosis']['status']
                 except KeyError:
-                    self.restutils.logger.warning('Not able to extract the violation status')
+                    logutils.logwarning('Not able to extract the violation status')
                 try:
-                    componentHref = violation['component']['href']
+                    objviol.componenthref = violation['component']['href']
                 except KeyError:
                     componentHref = None
 
                 objviol.componentid = ''
+                objviol.id = ''
                 rexcompid = "/components/([0-9]+)/snapshots/"
                 m0 = re.search(rexcompid, componentHref)
                 if m0: 
                     objviol.componentid = m0.group(1)
-                if qrrulepatternhref != None and componentHref != None:
-                    objviol.id = qrrulepatternhref+'#'+componentHref
+                if objviol.qrrulepatternhref != None and objviol.componenthref != None:
+                    objviol.id = objviol.qrrulepatternhref+'#'+objviol.componenthref
                 try:
                     objviol.componentShortName = violation['component']['shortName']
                 except KeyError:
-                    self.restutils.logger.warning('Not able to extract the componentShortName')                                     
+                    logutils.logwarning('Not able to extract the componentShortName')                                     
                 try:
                     objviol.componentNameLocation = violation['component']['name']
                 except KeyError:
-                    self.restutils.logger.warning('Not able to extract the componentNameLocation')
+                    logutils.logwarning('Not able to extract the componentNameLocation')
                 # filter on component name location
                 try:
                     objviol.componentstatus = violation['component']['status']
                 except KeyError:
-                    componentStatus = None                                            
+                    objviol.componentstatus = None                                            
                 try:
-                    findingsHref = violation['diagnosis']['findings']['href']
+                    objviol.findingshref = violation['diagnosis']['findings']['href']
                 except KeyError:
-                    findingsHref = None                                            
+                    objviol.findingsHref = None                                            
                 try:
-                    componentTreeNodeHref = violation['component']['treeNodes']['href']
+                    objviol.componenttreenodehref = violation['component']['treeNodes']['href']
                 except KeyError:
-                    componentTreeNodeHref = None                                        
+                    objviol.componenttreenodehref  = None                                        
                 try:
-                    sourceCodesHref = violation['component']['sourceCodes']['href']
+                    objviol.sourcecodeshref = violation['component']['sourceCodes']['href']
                 except KeyError:
-                    sourceCodesHref = None
+                    objviol.sourcecodeshref = None
                 
                 try:
-                    propagationRiskIndex = violation['component']['propagationRiskIndex']
+                    objviol.propagationriskindex = violation['component']['propagationRiskIndex']
                 except KeyError:
-                    propagationRiskIndex = None                                            
+                    objviol.propagationriskindex = None                                            
         
                 firsttechnicalcriterionid = '#N/A#'
-                for tcc in listtccontributions:
-                    if tcc.metricid ==  objviol.qrid:
-                        firsttechnicalcriterionid = tcc.parentmetricid
-                        break 
-                currentviolfullurl = edurl + '/engineering/index.html#' + snapshothref
-                currentviolfullurl += '/business/60017/qualityInvestigation/0/60017/' 
-                currentviolfullurl += firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
-                objviol.url = currentviolfullurl
+                if listtccontributions:
+                    for tcc in listtccontributions:
+                        if tcc.metricid ==  objviol.qrid:
+                            firsttechnicalcriterionid = tcc.parentmetricid
+                            break 
+                
+                if edurl and snapshothref:
+                    currentviolfullurl = edurl + '/engineering/index.html#' + snapshothref
+                    currentviolfullurl += '/business/60017/qualityInvestigation/0/60017/' 
+                    currentviolfullurl += firsttechnicalcriterionid + '/' + objviol.qrid + '/' + objviol.componentid
+                    objviol.url = currentviolfullurl
+        
+                objviol.functionalviolationid = objviol.qrid +'#'+ objviol.componentNameLocation
+                
+                violation_modules = violations_modules.get(objviol.id) 
+                if violation_modules:
+                    modules = violations_modules[objviol.id]
+                    objviol.modules = modules
         
                 listviolations.append(objviol)        
         return listviolations
     ########################################################################
     def get_tqi_transactions_violations_json(self, domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows):    
+        logutils = LogUtils()
         request = domain + "/transactions/" + transactionid + "/snapshots/" + snapshotid + '/violations'
         request += '?startRow=1'
         request += '&nbRows=' + str(nbrows)
@@ -1176,6 +1403,7 @@ class AIPRestAPI:
 
     ########################################################################
     def update_backgroundfactmetric(self, domain, applicationid, snapshotid, metricid, coveragevalue, modulelist, central_schema="com_vogella_junit_first_central", app_name="com.vogella.junit.first"):
+        logutils = LogUtils()
         #AAD/applications/3/snapshots/10/results?background-facts=(66004)
         request = domain + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + "/results"
         #?background-facts=(' + str(metricid) + ')'
@@ -1193,16 +1421,29 @@ class AIPRestAPI:
     ########################################################################
     def create_scheduledexclusions_json(self, domain, applicationid, snapshotid, json_exclusions_to_create):
         request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/exclusions/requests'
-        return self.restutils.execute_requests_post(request, 'application/json',json_exclusions_to_create)
-    
+        return self.restutils.execute_request_post(request, 'application/json',json_exclusions_to_create)
+
+    def get_scheduled_exclusions_json(self, domain, applicationid, snapshotid):
+        request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/exclusions/scheduled?&startRow=1&nbRows=100000'
+        return self.restutils.execute_requests_get(request, 'application/json')
+
+    def get_excluded_violations_json(self, domain, applicationid, snapshotid):
+        request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/excluded-violations?&startRow=1&nbRows=100000'
+        return self.restutils.execute_requests_get(request, 'application/json')
+
     ########################################################################
     def create_actionplans_json(self, domain, applicationid, snapshotid, json_actionplans_to_create):
-        request = domain + "/applications/" + applicationid + '/action-plan/issues'
-        return self.restutils.execute_requests_post(request, 'application/json',json_actionplans_to_create)
+        request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/action-plan/issues'
+        return self.restutils.execute_request_post(request, 'application/json',json_actionplans_to_create)
+
+    def get_actionplans_json(self, domain, applicationid, snapshotid):
+        request = domain + "/applications/" + applicationid + "/snapshots/" + snapshotid + '/action-plan/issues?=&startRow=1&nbRows=500000'
+        return self.restutils.execute_requests_get(request, 'application/json')
 
     ########################################################################
     def get_rule_pattern(self, rulepatternHref):
-        self.restutils.logger.debug("Extracting the rule pattern details")   
+        logutils = LogUtils()
+        logutils.logdebug("Extracting the rule pattern details")   
         request = rulepatternHref
         json_rulepattern =  self.restutils.execute_requests_get(request)
         obj = None
@@ -1240,7 +1481,9 @@ class AIPRestAPI:
         request = domainname + "/applications/" + applicationid + "/snapshots/" + snapshotid + "/action-plan/summary"
         return self.restutils.execute_requests_get(request)
 
+    # do not include the solved
     def get_actionplan_summary(self,domainname,applicationid, snapshotid):
+        logutils = LogUtils()
         dictapsummary = {}
         json_apsummary = self.get_actionplan_summary_json(domainname, applicationid, snapshotid)
         if json_apsummary != None:
@@ -1253,6 +1496,74 @@ class AIPRestAPI:
                 pendingissues  = qrap['pendingIssues']
                 numberofactions = addedissues + pendingissues
                 dictapsummary.update({qrid:numberofactions})
+        return dictapsummary
+
+
+    # parse the exclusions excluded and scheduled
+    def parse_json_exclusions(self, json_exclusions):
+        dictsummary = {}
+        if json_exclusions:
+            for excl_item in json_exclusions:
+                qrhref = excl_item['rulePattern']['href']
+                qrid = self.get_hrefid(qrhref)
+                status = excl_item['exclusionRequest']['status']
+                if not dictsummary.get(qrid):
+                    dictsummary[qrid] = {}
+                    dictsummary[qrid]["total"] = 0
+                    dictsummary[qrid]["processed"] = 0
+                    dictsummary[qrid]["added"] = 0
+                total = dictsummary[qrid]["total"] + 1
+                added = dictsummary[qrid]["added"]
+                processed = dictsummary[qrid]["processed"]
+                if status == 'added':
+                    added += 1
+                elif status == 'processed':
+                    processed += 1                    
+                dictsummary[qrid].update({"total":total, "added":added, "processed": processed})           
+        return dictsummary 
+
+    # include the exclusions summary : excluded and scheduled
+    def get_exclusions_summary(self,domainname,applicationid, snapshotid):
+        dictsummary = {}
+
+        dictsummary["exclusions"] = {}
+        json_exclusions_summary = self.get_excluded_violations_json(domainname, applicationid, snapshotid)
+        dictsummary["exclusions"] = self.parse_json_exclusions(json_exclusions_summary)
+
+        dictsummary["scheduled_exclusions"] = {}
+        json_scheduled_exclusions_summary = self.get_scheduled_exclusions_json(domainname, applicationid, snapshotid)
+        dictsummary["scheduled_exclusions"] = self.parse_json_exclusions(json_scheduled_exclusions_summary)
+        
+        return dictsummary
+
+
+    # include the total (including solved) and the number of solved, added, fixed
+    def get_actionplan_summary_including_solved(self,domainname,applicationid, snapshotid):
+        dictapsummary = {}
+        json_apsummary = self.get_actionplans_json(domainname, applicationid, snapshotid)
+        if json_apsummary != None:
+            for qrap in json_apsummary:
+                qrhref = qrap['rulePattern']['href']
+                qrid = self.get_hrefid(qrhref)
+                status = qrap['remedialAction']['status']
+                if not dictapsummary.get(qrid):
+                    dictapsummary[qrid] = {}
+                    dictapsummary[qrid]["total"] = 0
+                    dictapsummary[qrid]["added"] = 0
+                    dictapsummary[qrid]["pending"] = 0
+                    dictapsummary[qrid]["solved"] = 0
+                
+                total = dictapsummary[qrid]["total"] + 1
+                added = dictapsummary[qrid]["added"]
+                pending = dictapsummary[qrid]["pending"]
+                solved = dictapsummary[qrid]["solved"]
+                if status == 'added':
+                    added += 1
+                elif status == 'pending':
+                    pending += 1
+                elif status == 'solved':
+                    solved += 1
+                dictapsummary[qrid].update({"total":total, "added":added, "pending": pending, "solved" : solved})
         return dictapsummary
 
     ########################################################################
@@ -1272,11 +1583,16 @@ class AIPRestAPI:
                 dict_aptriggers.update({qrid:active})
         return dict_aptriggers
     ########################################################################
-    def get_qualitymetrics_results_json(self, domainname, applicationid, snapshotfilter, snapshotids, criticalonly,  modules=None, nbrows=10000000):
-        LogUtils.loginfo(self.restutils.logger,'Extracting the quality metrics results',True)
+    def get_qualitymetrics_results_json(self, domainname, applicationid, snapshotfilter, snapshotids, criticalonly,  modules=None, qridfilter=None, nbrows=10000000):
+        logutils = LogUtils()
+        logutils.loginfo('Extracting the quality metrics results',True)
         request = domainname + "/applications/" + applicationid + "/results?quality-indicators"
-        request += '=(business-criteria,cc:60017'
-        if criticalonly == None or not criticalonly:   
+        request += '=(business-criteria,technical-criteria'
+        if not qridfilter:
+            request += ',cc:60017'
+        else:
+            request += ','+str(qridfilter)
+        if not qridfilter and (criticalonly == None or not criticalonly):   
             request += ',nc:60017'
         request += ')&select=(evolutionSummary,violationRatio,aggregators)'
         strsnapshotfilter = ''
@@ -1293,13 +1609,14 @@ class AIPRestAPI:
         request += '&nbRows=' + str(nbrows)
         return self.restutils.execute_requests_get(request)
 
-    def get_qualitymetrics_results_by_snapshotids_json(self, domainname, applicationid, snapshotids, criticalonly, modules, nbrows):
-        return self.get_qualitymetrics_results_json(domainname, applicationid, None, snapshotids, criticalonly, modules, nbrows)
+    def get_qualitymetrics_results_by_snapshotids_json(self, domainname, applicationid, snapshotids, criticalonly, modules, qridfilter, nbrows):
+        return self.get_qualitymetrics_results_json(domainname, applicationid, None, snapshotids, criticalonly, modules, qridfilter, nbrows)
 
-    def get_qualitymetrics_results_allsnapshots_json(self, domainname, applicationid, snapshotfilter, criticalonly, modules, nbrows):
-        return self.get_qualitymetrics_results_json(domainname, applicationid, snapshotfilter, None, criticalonly, modules, nbrows)
+    def get_qualitymetrics_results_allsnapshots_json(self, domainname, applicationid, snapshotfilter, criticalonly, modules, qridfilter, nbrows):
+        return self.get_qualitymetrics_results_json(domainname, applicationid, snapshotfilter, None, criticalonly, modules, qridfilter, nbrows)
 
     def get_metric_from_json(self, json_metric, parent_metric=None):
+        logutils = LogUtils()
         if json_metric == None:
             return None
     
@@ -1330,9 +1647,9 @@ class AIPRestAPI:
             metric.name = parent_metric.name
             metric.critical = parent_metric.critical 
         """
-        self.restutils.logger.debug("D01 " +  metric.name + " " + str(json_metric))
-        self.restutils.logger.debug("D02 " +  str(json_metric['result']))
-        self.restutils.logger.debug("D03 " +  str(json_metric['result']['grade']))
+        logutils.logdebug("D01 " +  metric.name + " " + str(json_metric))
+        logutils.logdebug("D02 " +  str(json_metric['result']))
+        logutils.logdebug("D03 " +  str(json_metric['result']['grade']))
         if json_metric == None or json_metric['result']== None or json_metric['result']['grade'] == None:
             None
         """
@@ -1346,7 +1663,7 @@ class AIPRestAPI:
             try:
                 metric.grade = json_metric['result']['grade']
             except:
-                self.restutils.logger.warning("Metric %s has an empty grade " % str(metric.name))
+                logutils.logwarning("Metric %s has an empty grade " % str(metric.name))
                 # if there is no grade for the modules, we skip
                 # we don't skip for the application metric, even if it's not normal but we might have a grade for the module and we want to process in this case
                 if parent_metric != None:
@@ -1370,116 +1687,155 @@ class AIPRestAPI:
                 None
                 
             if  metric.ratio == None:
-                self.restutils.logger.warning("Metric %s has an empty compliance ratio " % str(metric.name))                                                           
+                logutils.logwarning("Metric %s has an empty compliance ratio " % str(metric.name))                                                           
             try:
                 metric.addedviolations = json_metric['result']['evolutionSummary']['addedViolations']                                              
             except KeyError:
                 None   
             try:
                 metric.removedviolations = json_metric['result']['evolutionSummary']['removedViolations']
+                metric.deltaviolations = metric.addedviolations - metric.removedviolations 
             except KeyError:
                 None      
               
         return metric
 
-    def get_qualitymetrics_results(self, domainname, applicationid, snapshotid, tqiqm, criticalonly, modules=None, nbrows=10000000):
+
+    def get_list_business_criteria(self, mapbctc, bcids, qrdetails):
+        strlistbc = ''
+        strlistbc_raw = ''
+        #mapbctc
+        if mapbctc != None:
+            for bcid in bcids:
+                listtc = mapbctc.get(bcid)
+                for tc in listtc:
+                    qrlisttc = qrdetails.get('tc').keys()
+                    for tcid in qrlisttc:
+                        if tc == tcid:
+                            # found 
+                            if bcid == "60016": 
+                                strlistbc = strlistbc + 'Security,'
+                                strlistbc_raw = strlistbc_raw + '60016#Security,'
+                            if bcid == "60014": 
+                                strlistbc = strlistbc + 'Efficiency,'
+                                strlistbc_raw = strlistbc_raw + '60014#Efficiency,'
+                            if bcid == "60013": 
+                                strlistbc = strlistbc + 'Robustness,'
+                                strlistbc_raw = strlistbc_raw + '60013#Robustness,'
+                            if bcid == "60011": 
+                                strlistbc = strlistbc + 'Transferability,'
+                                strlistbc_raw = strlistbc_raw + '60011#Transferability,'
+                            if bcid == "60012": 
+                                strlistbc = strlistbc + 'Changeability,'
+                                strlistbc_raw = strlistbc_raw + '60012#Changeability,'
+        if strlistbc != '': strlistbc = strlistbc[:-1]    
+        return strlistbc, strlistbc_raw
+
+
+    def get_qualitymetrics_results(self, domainname, applicationid, snapshotid, tqiqm, criticalonly, modules=None, qridfilter=None, nbrows=10000000, mapbctc=None):
+        logutils = LogUtils()
         dictmetrics = {}
         dicttechnicalcriteria = {}
         listbc = []
+
         dictmodules = None
         if modules != None:
             dictmodules = {}
         
-        json_qr_results = self.get_qualitymetrics_results_by_snapshotids_json(domainname, applicationid, snapshotid, criticalonly, modules, nbrows)
-        for res in json_qr_results:
-            iCount = 0
-            lastProgressReported = None
-            for res_app in res['applicationResults']:
-                iCount += 1
-                metricssize = len(res['applicationResults'])
-                imetricprogress = int(100 * (iCount / metricssize))
-                if imetricprogress in (9,19,29,39,49,59,69,79,89,99) : 
-                    if lastProgressReported == None or lastProgressReported != imetricprogress:
-                        LogUtils.loginfo(self.restutils.logger,  ' ' + str(imetricprogress+1) + '% of the metrics processed',True)
-                        lastProgressReported = imetricprogress
-                # parse the json
-                metric = self.get_metric_from_json(res_app)
-                # skip the metrics that have no grade
-                if metric == None:
-                    continue
-                metric.applicationName = res['application']['name'] 
-                
-                if metric.type in ("quality-measures","quality-distributions","quality-rules"):
-                    if (metric.grade == None): 
-                        LogUtils.logwarning(self.restutils.logger, "Metric has no grade, removing it from the list : " + metric.name, True)
-                    else:
-                        if metric.type == "quality-rules":
-                            try:
-                                metric.threshold1 = tqiqm[''+metric.id].get("threshold1")
-                                metric.threshold2 = tqiqm[''+metric.id].get("threshold2")
-                                metric.threshold3 = tqiqm[''+metric.id].get("threshold3")
-                                metric.threshold4 = tqiqm[''+metric.id].get("threshold4")
-                            except KeyError:
-                                None
-                            
-                            json_thresholds = None
-                            # loading from another place when tresholds are empty
-                            if not metric.threshold1 or not metric.threshold2 or not metric.threshold3 or not metric.threshold4:
-                                #LogUtils.loginfo(logger,'Extracting the quality rules thresholds',True)
-                                json_thresholds = self.get_qualityrules_thresholds_json(domainname, snapshotid, metric.id)   
-                            if json_thresholds != None and json_thresholds['thresholds'] != None:
-                                icount = 0
-                                for thres in json_thresholds['thresholds']:
-                                    icount += 1
-                                    if icount == 1: metric.threshold1=thres
-                                    if icount == 2: metric.threshold2=thres
-                                    if icount == 3: metric.threshold3=thres
-                                    if icount == 4: metric.threshold4=thres
-                        dictmetrics[metric.id] = metric
-                elif metric.type == "technical-criteria":
-                    #print('tc grade=' + str(metric.grade) + str(type(metric.grade)))
-                    if (metric.grade == None): 
-                        LogUtils.logwarning(self.restutils.logger, "Technical criterion has no grade, removing it from the list : " + metric.name)
-                    else:
-                        dicttechnicalcriteria[metric.id] = metric
-                elif metric.type == 'business-criteria':
-                    if (metric.grade == None): 
-                        self.restutils.logger.warning("Business criterions has no grade, removing it from the list : " + metric.name)
-                    else:
-                        listbc.append(metric)
-                
-                if modules:
-                    try:
-                        for res_mod in res_app['moduleResults']:
-                            mod_name = res_mod['moduleSnapshot']['name'] 
-                            if not dictmodules.get(mod_name):
-                                dictmodules[mod_name] = {}
-                            metric_module = self.get_metric_from_json(res_mod, metric)
-                            # skip the metrics that have no grade
-                            if metric_module == None:
-                                continue
-                            if metric_module.grade != None:
-                                b_one_module_has_grade = True
-                            metric_module.applicationName = res['application']['name']
-                            metric_module.threshold1 = metric.threshold1
-                            metric_module.threshold2 = metric.threshold2
-                            metric_module.threshold3 = metric.threshold3
-                            metric_module.threshold4 = metric.threshold4
-                            dictmodules[mod_name][metric_module] = metric_module
-                    except KeyError:
-                        None
-                # we add the metric only if it has a grade at application level or has grade at least at module level
-                if metric.type in ("quality-measures","quality-distributions","quality-rules"):
-                    if b_has_grade or b_one_module_has_grade:
-                        dictmetrics[metric.id] = metric  
-                    if not b_has_grade or (modules != None and not b_one_module_has_grade):
-                        LogUtils.logwarning(self.restutils.logger, "Metric %s" % metric.name, True)
-                    if not b_has_grade:
-                        LogUtils.logwarning(self.restutils.logger, "    has no grade at application level", True)
-                    if modules != None and not b_one_module_has_grade:
-                        LogUtils.logwarning(self.restutils.logger, "    has no grade at module level", True)
-                    if not b_has_grade and not b_one_module_has_grade:
-                        LogUtils.logwarning(self.restutils.logger, "    skipping metric", True)
+        json_qr_results = self.get_qualitymetrics_results_by_snapshotids_json(domainname, applicationid, snapshotid, criticalonly, modules, qridfilter, nbrows)
+        if json_qr_results: 
+            for res in json_qr_results:
+                iCount = 0
+                lastProgressReported = None
+                for res_app in res['applicationResults']:
+                    iCount += 1
+                    b_has_grade = False
+                    metricssize = len(res['applicationResults'])
+                    imetricprogress = int(100 * (iCount / metricssize))
+                    if imetricprogress in (9,19,29,39,49,59,69,79,89,99) : 
+                        if lastProgressReported == None or lastProgressReported != imetricprogress:
+                            logutils.loginfo(' ' + str(imetricprogress+1) + '% of the metrics processed',True)
+                            lastProgressReported = imetricprogress
+                    # parse the json
+                    metric = self.get_metric_from_json(res_app)
+                    # skip the metrics that have no grade
+                    if not metric:
+                        continue
+                    metric.applicationName = res['application']['name'] 
+                    
+                    if metric.type in ("quality-measures","quality-distributions","quality-rules"):
+                        if not metric.grade:
+                            b_has_grade = False
+                            logutils.logwarning("Metric has no grade, removing it from the list : " + metric.name, True)
+                        else:
+                            b_has_grade = True
+                            if metric.type == "quality-rules":
+                                try:
+                                    metric.threshold1 = tqiqm[''+metric.id].get("threshold1")
+                                    metric.threshold2 = tqiqm[''+metric.id].get("threshold2")
+                                    metric.threshold3 = tqiqm[''+metric.id].get("threshold3")
+                                    metric.threshold4 = tqiqm[''+metric.id].get("threshold4")
+                                except KeyError:
+                                    None
+                                
+                                json_thresholds = None
+                                # loading from another place when tresholds are empty
+                                if not metric.threshold1 or not metric.threshold2 or not metric.threshold3 or not metric.threshold4:
+                                    #logutils.loginfo('Extracting the quality rules thresholds',True)
+                                    json_thresholds = self.get_qualityrules_thresholds_json(domainname, snapshotid, metric.id)   
+                                if json_thresholds != None and json_thresholds['thresholds'] != None:
+                                    icount = 0
+                                    for thres in json_thresholds['thresholds']:
+                                        icount += 1
+                                        if icount == 1: metric.threshold1=thres
+                                        if icount == 2: metric.threshold2=thres
+                                        if icount == 3: metric.threshold3=thres
+                                        if icount == 4: metric.threshold4=thres
+                            dictmetrics[metric.id] = metric
+                    elif metric.type == "technical-criteria":
+                        #print('tc grade=' + str(metric.grade) + str(type(metric.grade)))
+                        if (metric.grade == None): 
+                            logutils.logwarning("Technical criterion has no grade, removing it from the list : " + metric.name)
+                        else:
+                            dicttechnicalcriteria[metric.id] = metric
+                    elif metric.type == 'business-criteria':
+                        if (metric.grade == None): 
+                            logutils.logwarning("Business criterions has no grade, removing it from the list : " + metric.name)
+                        else:
+                            listbc.append(metric)
+                    
+                    if modules:
+                        try:
+                            for res_mod in res_app['moduleResults']:
+                                mod_name = res_mod['moduleSnapshot']['name'] 
+                                if not dictmodules.get(mod_name):
+                                    dictmodules[mod_name] = {}
+                                metric_module = self.get_metric_from_json(res_mod, metric)
+                                # skip the metrics that have no grade
+                                if metric_module == None:
+                                    continue
+                                if metric_module.grade != None:
+                                    b_one_module_has_grade = True
+                                metric_module.applicationName = res['application']['name']
+                                metric_module.threshold1 = metric.threshold1
+                                metric_module.threshold2 = metric.threshold2
+                                metric_module.threshold3 = metric.threshold3
+                                metric_module.threshold4 = metric.threshold4
+                                dictmodules[mod_name][metric_module] = metric_module
+                        except KeyError:
+                            None
+                    # we add the metric only if it has a grade at application level or has grade at least at module level
+                    if metric.type in ("quality-measures","quality-distributions","quality-rules"):
+                        if b_has_grade or b_one_module_has_grade:
+                            dictmetrics[metric.id] = metric  
+                        if not b_has_grade or (modules != None and not b_one_module_has_grade):
+                            logutils.logwarning("Metric %s" % metric.name, True)
+                        if not b_has_grade:
+                            logutils.logwarning("    has no grade at application level", True)
+                        if modules != None and not b_one_module_has_grade:
+                            logutils.logwarning("    has no grade at module level", True)
+                        if not b_has_grade and not b_one_module_has_grade:
+                            logutils.logwarning("    skipping metric", True)
                            
         return dictmetrics, dicttechnicalcriteria, listbc, dictmodules
 
@@ -1499,12 +1855,23 @@ class AIPRestAPI:
     ########################################################################
     def get_tqi_json(self, domain, snapshotsfilter=None):
         return self.get_quality_indicators_by_id(domain, Metric.BC_TQI, snapshotsfilter)  
-    
-    ########################################################################
-    def get_sizing_measures_by_id_json(self, domain, metricids, snapshotsfilter=None):
-        if snapshotsfilter == None:
-            snapshotsfilter = AIPRestAPI.FILTER_SNAPSHOTS_LAST
-        request = domain + "/results?sizing-measures=(" + str(metricids) + ")&snapshots="+snapshotsfilter
+    def get_sizing_measures_by_id_json(self, domain, metricids, snapshotsfilter=None, modules=None):
+        snapshot_index = None 
+        snapshot_ids = None
+        if snapshotsfilter != None:
+            if snapshotsfilter.snapshot_index != None:
+                snapshot_index = snapshotsfilter.snapshot_index
+            if snapshotsfilter.snapshot_ids != None:
+                snapshot_ids = snapshotsfilter.snapshot_ids
+        if snapshot_index == None and snapshot_ids == None:
+            snapshot_index == AIPRestAPI.FILTER_SNAPSHOTS_LAST
+        request = domain + "/results?sizing-measures=(" + str(metricids) + ")"
+        if snapshot_index != None:
+            request += "&snapshots=" + snapshot_index
+        if snapshot_ids != None:
+            request += "&snapshot-ids=" + snapshot_ids            
+        if modules != None:
+            request += "&modules=" + modules
         return self.restutils.execute_requests_get(request)
 
     ########################################################################
@@ -1561,11 +1928,62 @@ class AIPRestAPI:
         return json_snapshots
 
     ########################################################################
-    def get_sizing_measures_json(self, domain, snapshotsfilter=None):
+    def get_sizing_measures_json(self, domain, snapshotsfilter=None, modulesfilter=None):
         if snapshotsfilter == None:
             snapshotsfilter = AIPRestAPI.FILTER_SNAPSHOTS_LAST
-        request = domain + "/results?sizing-measures=(technical-size-measures,technical-debt-statistics,run-time-statistics,functional-weight-measures)&snapshots="+snapshotsfilter
+        
+        snapshot_index = None 
+        snapshot_ids = None
+        if snapshotsfilter != None:
+            if snapshotsfilter.snapshot_index != None:
+                snapshot_index = snapshotsfilter.snapshot_index
+            if snapshotsfilter.snapshot_ids != None:
+                snapshot_ids = snapshotsfilter.snapshot_ids        
+        if snapshot_index == None and snapshot_ids == None:
+            snapshot_index == AIPRestAPI.FILTER_SNAPSHOTS_LAST
+        request = domain + "/results?sizing-measures=(technical-size-measures,technical-debt-statistics,run-time-statistics,functional-weight-measures)"
+        if snapshot_index:
+            request += "&snapshots=%s" % snapshot_index
+        if snapshot_ids:
+            request += "&snapshot-ids=%s" % snapshot_ids
+        if modulesfilter:
+            request += "&modules=%s" % modulesfilter
+        
         return self.restutils.execute_requests_get(request)
+
+    def get_sizing_measures(self, domain, snapshotsfilter=None, modulesfilter=None):
+        list_results = [] # per snapshot
+        sizing_measures_json = self.get_sizing_measures_json(domain, snapshotsfilter, modulesfilter)
+        for item_snapshot in sizing_measures_json:
+            application_name =  item_snapshot["applicationSnapshot"]['name']
+            snapshot_href = item_snapshot["applicationSnapshot"]["href"]
+            snapshot_id =  AIPRestAPI.get_href_id(snapshot_href)
+            dic_snapshot_results = {}
+            dic_snapshot_results["application_name"] = application_name
+            dic_snapshot_results["snapshot_href"] = snapshot_href
+            dic_snapshot_results["snapshot_id"] = snapshot_id
+            dic_snapshot_results["metrics"] = {}
+            
+            for item_metric in item_snapshot['applicationResults']:
+                metric_id = item_metric['reference']['key']
+                metric_type = item_metric['type'] 
+                dic_snapshot_results["metrics"][metric_id] = {}
+                metric_name = item_metric['reference']['name']
+                metric_value = item_metric['result']['value']
+                dic_snapshot_results["metrics"][metric_id]["metric_id"] = metric_id 
+                dic_snapshot_results["metrics"][metric_id]["metric_type"] = metric_type
+                dic_snapshot_results["metrics"][metric_id]["metric_name"] = metric_name
+                dic_snapshot_results["metrics"][metric_id]["metric_value"] = metric_value
+                dic_snapshot_results["metrics"][metric_id]["modules"] = {}
+                for module_result in item_metric["moduleResults"]:
+                    module_name = module_result['moduleSnapshot']['name']
+                    module_value = module_result['result']['value']
+                    dic_snapshot_results["metrics"][metric_id]["modules"][module_name] = {}
+                    dic_snapshot_results["metrics"][metric_id]["modules"][module_name]["module_name"] = module_name
+                    dic_snapshot_results["metrics"][metric_id]["modules"][module_name]["module_value"] = module_value
+            list_results.append(dic_snapshot_results)            
+        return list_results
+        
 
     ########################################################################
     def get_quality_indicators_json(self, domain, snapshotsfilter=None):
@@ -1591,9 +2009,8 @@ class AIPRestAPI:
     def get_metric_contributions(self, domain, metricid, snapshotid):
         return Contribution.loadlist(self.get_metric_contributions_json(domain, metricid, snapshotid))
 
-    ########################################################################
+    #################################Violation#######################################
     def get_qualityrules_thresholds_json(self, domain, snapshotid, qrid):
-        #LogUtils.loginfo(self.restutils.logger,'Extracting the quality rules thresholds',True)
         request = domain + "/quality-indicators/" + str(qrid) + "/snapshots/"+ snapshotid
         return self.restutils.execute_requests_get(request)
     
@@ -1601,27 +2018,31 @@ class AIPRestAPI:
     def get_businesscriteria_grades_json(self, domain, snapshotsfilter=None):
         if snapshotsfilter == None:
             snapshotsfilter = AIPRestAPI.FILTER_SNAPSHOTS_LAST        
-        request = domain + "/results?quality-indicators=(60017,60016,60014,60013,60011,60012,66031,66032,66033)&applications=($all)&snapshots=" + snapshotsfilter 
+        request = domain + "/results?quality-indicators=(60017,60016,60014,60013,60011,60012,66031,66032,66033,60013,20140522)&applications=($all)&snapshots=" + snapshotsfilter 
         return self.restutils.execute_requests_get(request)
 
     ########################################################################
     def get_snapshot_tqi_quality_model_json (self, domainname, snapshotid):
-        self.restutils.logger.info("Extracting the snapshot quality model")   
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot quality model")   
         request = domainname + "/quality-indicators/60017/snapshots/" + snapshotid + "/base-quality-indicators" 
         return self.restutils.execute_requests_get(request)
 
     def get_snapshot_quality_model_qualitymetrics_json (self, domainname, snapshotid):
-        self.restutils.logger.info("Extracting the snapshot quality model - quality-rules")   
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot quality model - quality-rules")   
         request = domainname + "/configuration/snapshots/" + snapshotid + "/quality-rules" 
         return self.restutils.execute_requests_get(request)    
     
     def get_snapshot_quality_model_qualitydistributions_json (self, domainname, snapshotid):
-        self.restutils.logger.info("Extracting the snapshot quality model - quality-distributions")   
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot quality model - quality-distributions")   
         request = domainname + "/configuration/snapshots/" + snapshotid + "/quality-distributions" 
         return self.restutils.execute_requests_get(request)    
 
     def get_snapshot_quality_model_qualitymeasures_json (self, domainname, snapshotid):
-        self.restutils.logger.info("Extracting the snapshot quality model - quality-measures")   
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot quality model - quality-measures")   
         request = domainname + "/configuration/snapshots/" + snapshotid + "/quality-measures" 
         return self.restutils.execute_requests_get(request)    
 
@@ -1695,13 +2116,15 @@ class AIPRestAPI:
         return tqiqm
     ########################################################################
     def get_snapshot_bc_tc_mapping_json(self, domain, snapshotid, bcid):
-        self.restutils.logger.info("Extracting the snapshot business criterion " + bcid +  " => technical criteria mapping")  
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the snapshot business criterion " + bcid +  " => technical criteria mapping")  
         request = domain + "/quality-indicators/" + str(bcid) + "/snapshots/" + snapshotid
         return self.restutils.execute_requests_get(request)
     
     ########################################################################
     def get_components_pri_json (self, domain, applicationid, snapshotid, bcid,nbrows):
-        self.restutils.logger.info("Extracting the components PRI for business criterion " + bcid)  
+        logutils = LogUtils()
+        logutils.loginfo("Extracting the components PRI for business criterion " + bcid)  
         request = domain + "/applications/" + str(applicationid) + "/snapshots/" + str(snapshotid) + '/components/' + str(bcid)
         request += '?startRow=1'
         request += '&nbRows=' + str(nbrows)
@@ -1720,7 +2143,8 @@ class AIPRestAPI:
     
     ########################################################################
     def get_objectviolation_metrics(self, objHref):
-        self.restutils.logger.debug("Extracting the component metrics")    
+        logutils = LogUtils()
+        logutils.logdebug("Extracting the component metrics")    
         request = objHref
         json_component = self.restutils.execute_requests_get(request)
         obj = None
@@ -1803,13 +2227,15 @@ class AIPRestAPI:
     
     ########################################################################
     def get_objectviolation_findings_json(self, objHref, qrid):
-        self.restutils.logger.debug("Extracting the component findings")    
+        logutils = LogUtils()
+        logutils.logdebug("Extracting the component findings")    
         request = objHref + '/findings/' + qrid 
         return self.restutils.execute_requests_get(request)
          
     ########################################################################
     # extract the transactions TRI & violations component list per business criteria
     def init_transactions (self, domain, applicationid, snapshotid, criticalonly, violationStatus, technoFilter,nbrows):
+        logutils = LogUtils()
         #TQI,Security,Efficiency,Robustness
         bcids = ["60017","60016","60014","60013"]
         transaclist = {}
@@ -1860,7 +2286,7 @@ class AIPRestAPI:
                     json_tran_violations = None
                     # look for the transaction violation only for the TQI, for the other HF take the violation already extracted for the TQI  
                     if bcid == "60017":
-                        self.restutils.logger.info("Extracting the violations for transaction " + transactionid + ' (' + str(icount) + '/' + str(len(json_transactions)) + ')')
+                        logutils.loginfo("Extracting the violations for transaction " + transactionid + ' (' + str(icount) + '/' + str(len(json_transactions)) + ')')
                         json_tran_violations = self.get_tqi_transactions_violations_json(domain, snapshotid, transactionid, criticalonly, violationStatus, technoFilter,nbrows)                  
                         if json_tran_violations != None:
                             for tran_viol in json_tran_violations:
@@ -1877,6 +2303,7 @@ class AIPRestAPI:
     
     ########################################################################
     def initialize_components_pri (self, domain, applicationid, snapshotid,bcids,nbrows):
+        logutils = LogUtils()
         comppridict = {}
         str_pri = ''
         for bcid in bcids:
@@ -1888,7 +2315,7 @@ class AIPRestAPI:
                     try:
                         treenodehref = val['treeNodes']['href']
                     except KeyError:
-                        self.restutils.logger.error('KeyError treenodehref ' + str(val))
+                        logutils.logerror('KeyError treenodehref ' + str(val))
                     if treenodehref != None:
                         rexuri = "/components/([0-9]+)/"
                         m0 = re.search(rexuri, treenodehref)
@@ -1970,12 +2397,53 @@ class RulePatternDetails:
 class Metric:
     # Business criteria metrics
     BC_TQI = 60017
+    BC_Security = 60016
+    BC_Efficiency = 60014
+    BC_Robustness = 60013
+    BC_Transferability = 60011
+    BC_Changeability = 60012
+    BC_GreenIT = 20140522
+    BC_ProgrammingPractices = 66031
+    BC_Documentation = 66032
+    BC_ArchitecturalDesign = 66033
+    BC_ISO5055_Index = 1061000
+    BC_ISO5055_Maintainability = 1061001
+    BC_ISO5055_Performance_Efficiency = 1061002
+    BC_ISO5055_Reliability = 1061003
+    BC_ISO5055_Security = 1061004
+    
+    bc_names = {
+            BC_TQI : "Total Quality Index", BC_Security : "Security", BC_Efficiency : "Efficiency",     BC_Robustness : "Robustness",
+            BC_Transferability : "Transferability", BC_Changeability : "Changeability", BC_GreenIT : "Green IT",
+            BC_ProgrammingPractices : "Programming Practices",    BC_Documentation : "Documentation", BC_ArchitecturalDesign : "ArchitecturalDesign",
+            BC_ISO5055_Index : "ISO-5055 Index", BC_ISO5055_Maintainability : "ISO-5055 Maintainability",  BC_ISO5055_Performance_Efficiency : "ISO-5055 Performance Efficiency",  BC_ISO5055_Reliability : "ISO-5055 Reliability", BC_ISO5055_Security : "ISO-5055 Security"
+        } 
+    
+    # Total Quality Index,Security,Efficiency,Robustness,Changeability,Transferability,Coding Best Practices/Programming Practices,Documentation,Architectural Design,Green IT
+    #      ISO-5055-Index, ISO-5055-Maintainability, ISO-5055-Performance-Efficiency, ISO-5055-Reliability, ISO-5055-Security    
+    
+    bcids = [str(BC_TQI),str(BC_Security),str(BC_Efficiency),str(BC_Robustness),str(BC_Changeability),str(BC_Transferability),
+             str(BC_GreenIT),
+             str(BC_ProgrammingPractices),str(BC_Documentation),str(BC_ArchitecturalDesign),
+             str(BC_ISO5055_Index),str(BC_ISO5055_Maintainability), str(BC_ISO5055_Performance_Efficiency), str(BC_ISO5055_Reliability), str(BC_ISO5055_Security)
+         ]
+    bcids_for_reporting = [
+            str(BC_TQI),str(BC_Security),str(BC_Efficiency),str(BC_Robustness),str(BC_Changeability),str(BC_Transferability),
+         ]
     
     # Technical sizes metrics
     TS_LOC="10151"
+    TS_DECISION_POINTS="10506"
+    TS_NB_ARTIFACTS="10152"
+    TS_NB_CLASSES="10155"
+    TS_NB_PROGRAMS="10156"
+    TS_NB_TABLES="10163"
+    TS_NB_VIEWS="10164"
+    TS_NB_FUNCTIONS_AND_PROC="19175"
     
     # Functional size metrics
     FS_AFP="10202"
+    
     
     # Distributions metrics
     DIST_CYCLOMATIC_COMPLEXITY = "65501"
@@ -2002,7 +2470,13 @@ class Metric:
     threshold4 = None
     addedviolations = None
     removedviolations = None
+    deltaviolations = None
     applicationName = None
+    
+    technical_criteria_raw = None
+    technical_criteria = None
+    business_criteria_raw = None
+    business_criteria = None
 
     @staticmethod
     def get_distributionsmetrics():
@@ -2060,9 +2534,21 @@ class Violation:
     actionplantag = ''
     actionplancomment = ''
     hasExclusionRequest = False
+    exclusioncomment = ''
     url = None
     violationstatus = None
     componentstatus = None
+    modules = []
+    violationid = None
+    functionalviolationid = None
+    
+    findingshref = None
+    componenttreenodehref = None                                    
+    sourcecodeshref  = None                                   
+    propagationriskindex = None                                
+    
+    
+    
 
 ########################################################################
 
@@ -2117,13 +2603,15 @@ class ViolationOutput:
     totalviol = None
     
     qrrulepatternhref = None
-    componentHref = None
+    componenthref = None
     inputcomment = None
     actionplaninputtag = None
+    
+    modules = None
    
 # Logging utils
 class LogUtils:
-
+    """
     @staticmethod
     def logdebug(logger, msg, tosysout = False):
         logger.debug(msg)
@@ -2145,6 +2633,38 @@ class LogUtils:
     @staticmethod
     def logerror(logger, msg, tosysout = False):
         logger.error(msg)
+        if tosysout:
+            print("#### " + msg)
+    """
+    
+    def __new__(cls, ):
+        """ creates a singleton object, if it is not created, 
+        or else returns the previous singleton object"""
+        if not hasattr(cls, 'instance'):
+            cls.instance = super(LogUtils, cls).__new__(cls)
+        return cls.instance
+
+    def loginfo(self, msg, tosysout = False):
+        if self.logger:
+            self.logger.info(msg)
+        if tosysout:
+            print(msg)
+
+    def logdebug(self, msg, tosysout = False):
+        if self.logger:
+            self.logger.debug(msg)
+        if tosysout:
+            print(msg)
+
+    def logwarning(self, msg, tosysout = False):
+        if self.logger:
+            self.logger.warning(msg)
+        if tosysout:
+            print("#### " + msg)
+
+    def logerror(self, msg, tosysout = False):
+        if self.logger:
+            self.logger.error(msg)
         if tosysout:
             print("#### " + msg)
 
